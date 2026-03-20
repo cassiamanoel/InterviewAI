@@ -1,0 +1,137 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\andre\OneDrive\Documentos\Interview AI\backend
+plugins: anyio-4.12.1, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 22 items
+
+tests\api\test_auth.py ..                                                [  9%]
+tests\api\test_auth_extended.py .                                        [ 13%]
+tests\api\test_cv.py ..                                                  [ 22%]
+tests\api\test_interview.py ..                                           [ 31%]
+tests\services\test_billing.py ..                                        [ 40%]
+tests\services\test_chunker.py ..                                        [ 50%]
+tests\services\test_email.py ..                                          [ 59%]
+tests\services\test_rag.py .                                             [ 63%]
+tests\services\test_rate_limit.py .                                      [ 68%]
+tests\services\test_rate_limit_db.py F                                   [ 72%]
+tests\test_health.py .                                                   [ 77%]
+.\venv\Scripts\python.exe : 
+C:\Users\andre\OneDrive\Documentos\Interview AI\backend\venv\Lib\
+site-packages\_pytest\unraisableexception.py:33: RuntimeWarning: 
+coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+No linha:1 caractere:22
++ ... ONPATH="."; .\venv\Scripts\python.exe -m pytest tests/ > 
+pytest_outpu ...
++                 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\andre\...s 
+    never awaited:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  gc.collect()
+RuntimeWarning: Enable tracemalloc to get the object allocation 
+traceback
+tests\test_mega.py .....                                                 [100%]
+
+================================== FAILURES ===================================
+____________________________ test_can_consume_free ____________________________
+
+    @pytest.mark.asyncio
+    async def test_can_consume_free():
+        from app.services.rate_limit_service import Limits
+        with patch("app.services.rate_limit_service.RateLimitService._get_limits_for_user", new_callable=AsyncMock) as mock_lim:
+            mock_lim.return_value = Limits(10, 1000)
+    
+            with patch("app.services.rate_limit_service.RateLimitService.ensure_usage_row", new_callable=AsyncMock):
+                mock_db = AsyncMock()
+                mock_usage = MagicMock()
+                mock_usage.requests_used = 0
+                mock_usage.tokens_used = 0
+    
+                mock_db.scalars.return_value.first.return_value = mock_usage
+    
+>               ok, _ = await RateLimitService.can_consume(mock_db, "user1", date.today(), 1, 0)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\services\test_rate_limit_db.py:20: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+db = <AsyncMock id='2170201980416'>, user_id = 'user1'
+day = datetime.date(2026, 2, 26), req_inc = 1, token_inc = 0
+
+    @staticmethod
+    async def can_consume(
+        db: AsyncSession,
+        user_id,
+        day: date,
+        req_inc: int,
+        token_inc: int
+    ) -> tuple[bool, dict]:
+    
+        limits = await RateLimitService._get_limits_for_user(db, user_id)
+    
+        stmt = select(UsageDaily).where(
+            UsageDaily.user_id == user_id,
+            UsageDaily.day == day
+        ).with_for_update()
+        row = (await db.scalars(stmt)).first()
+    
+        if not row:
+            await RateLimitService.ensure_usage_row(db, user_id, day)
+            stmt = select(UsageDaily).where(
+                UsageDaily.user_id == user_id,
+                UsageDaily.day == day
+            ).with_for_update()
+            row = (await db.scalars(stmt)).first()
+    
+>       current_requests = row.requests_used or 0
+                           ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'coroutine' object has no attribute 'requests_used'
+
+app\services\rate_limit_service.py:102: AttributeError
+============================== warnings summary ===============================
+app\core\config.py:4
+  C:\Users\andre\OneDrive\Documentos\Interview AI\backend\app\core\config.py:4: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Settings(BaseSettings):
+
+app\schemas\user_schema.py:8
+  C:\Users\andre\OneDrive\Documentos\Interview AI\backend\app\schemas\user_schema.py:8: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class UserResponse(BaseModel):
+
+app\main.py:62
+  C:\Users\andre\OneDrive\Documentos\Interview AI\backend\app\main.py:62: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+venv\Lib\site-packages\fastapi\applications.py:4573
+  C:\Users\andre\OneDrive\Documentos\Interview AI\backend\venv\Lib\site-packages\fastapi\applications.py:4573: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+tests/api/test_auth.py: 8 warnings
+tests/api/test_auth_extended.py: 6 warnings
+tests/api/test_cv.py: 8 warnings
+tests/api/test_interview.py: 8 warnings
+tests/services/test_rate_limit.py: 1 warning
+tests/test_health.py: 6 warnings
+tests/test_mega.py: 2 warnings
+  C:\Users\andre\OneDrive\Documentos\Interview AI\backend\app\core\logging.py:8: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "ts": datetime.utcnow().isoformat() + "Z",
+
+tests/test_mega.py::test_security_hash
+  C:\Users\andre\OneDrive\Documentos\Interview AI\backend\venv\Lib\site-packages\passlib\handlers\argon2.py:716: DeprecationWarning: Accessing argon2.__version__ is deprecated and will be removed in a future release. Use importlib.metadata directly to query for argon2-cffi's packaging metadata.
+    _argon2_cffi.__version__, max_version)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/services/test_rate_limit_db.py::test_can_consume_free - Attribut...
+================= 1 failed, 21 passed, 44 warnings in 38.60s ==================

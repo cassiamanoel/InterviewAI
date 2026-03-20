@@ -1,0 +1,61 @@
+# Plano de Implementação – Interview AI Backend
+
+Este plano transforma as falhas identificadas e os requisitos SaaS em ações técnicas concretas. A abordagem foi dividida em duas fases principais: **Fase 1 (Estabilidade e Segurança)** e **Fase 2 (SaaS Readiness e Performance)**.
+
+---
+
+## Modificações Necessárias (Refatoração de Arquivos Existentes)
+
+### 1. Dependências e Segurança (Urgente)
+*   **[MODIFY]** [backend/requirements.txt](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/requirements.txt)
+    *   **Ação:** Adicionar `argon2-cffi` para corrigir o erro de hash de senhas, ou alterar para `bcrypt` (dependendo da preferência).
+    *   **Ação:** Adicionar bibliotecas assíncronas (ex: `asyncpg` se formos migrar o banco, `redis` para cache/rate limit).
+    *   **Ação:** Adicionar bibliotecas de pagamento (ex: `stripe`).
+*   **[MODIFY]** [backend/app/core/security.py](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/app/core/security.py)
+    *   **Ação:** Confirmar a importação e o uso do `argon2` nativamente. Adicionar configuração de duração de sessão via variáveis de ambiente.
+*   **[MODIFY]** [backend/app/main.py](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/app/main.py)
+    *   **Ação:** Corrigir a injeção do CORS (`allow_origins=["*"]`) para usar a whitelist definida no [.env](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/.env) (ex: `FRONTEND_URL`).
+    *   **Ação:** Adicionar o check de saúde (Health Check) do banco de dados relacional e do Redis (além do Qdrant estruturado atualmente).
+*   **[MODIFY]** [backend/app/middlewares/rate_limit.py](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/app/middlewares/rate_limit.py)
+    *   **Ação:** Remover a conexão síncrona com o PostgreSQL (`SessionLocal`) de dentro do middleware.
+    *   **Ação:** Substituir por chamadas a um serviço rápido de cache (como Redis).
+*   **[MODIFY]** [backend/docker-compose.yml](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/docker-compose.yml)
+    *   **Ação:** Inserir o serviço do FastAPI (Backend), referenciando o `Dockerfile` que será criado.
+    *   **Ação:** Inserir um contêiner para o **Redis** (fundamental para o rate limit em produção).
+
+---
+
+## Criação de Novos Arquivos (Feature e Infraestrutura)
+
+### 2. Infraestrutura e Deploy
+*   **[NEW]** `backend/Dockerfile`
+    *   **Ação:** Criar a imagem base do Python, copiar os [requirements.txt](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/requirements.txt), instalar dependências (incluindo dependências do sistema operacional se necessário), e rodar o Uvicorn (`CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]`).
+*   **[NEW]** `.github/workflows/deploy.yml` *(Opcional na fase 1, recomendado)*
+    *   **Ação:** Pipeline de CI/CD para rodar os testes e realizar o deploy (AWS, Railway, etc.) quando o código for aceito na branch `main`.
+
+### 3. Serviços SaaS Base (Fase 2)
+*   **[NEW]** `backend/app/services/redis_store.py`
+    *   **Ação:** Criar conexão e helpers base do Redis para o novo Rate Limit assíncrono e para cache efêmero do Prompt/Context (histórico das conversas).
+*   **[NEW]** `backend/app/services/email_service.py`
+    *   **Ação:** Cliente para envio de e-mails transacionais (boas-vindas, reset de senha) via SMTP, SendGrid, Resend ou AWS SES.
+*   **[NEW]** `backend/app/services/billing_service.py`
+    *   **Ação:** Serviço contendo toda a lógica de negócio do Stripe/LemonSqueezy (upgrade para "Pro", checagem de créditos limitados da versão "Free").
+
+### 4. Rotas e Middlewares Avançados
+*   **[NEW]** `backend/app/routes/billing.py`
+    *   **Ação:** Endpoints para Webhooks do Gateway de pagamento e endpoints onde o Frontend solicita o link de Checkout autenticado.
+*   **[NEW]** `backend/app/routes/users.py` *(Se não houver atualmente)*
+    *   **Ação:** Endpoints para que o usuário gerencie seu perfil, troque a senha e consiga o status do seu plano ("Free", "Pro").
+
+---
+
+## Ordem de Execução Recomendada (Rollout)
+
+1.  **Resolver Segurança:** Atualizar os packages (Argon2), travar o CORS e adicionar o Dockerfile + Web Server.
+2.  **Corrigir Gargalos:** Substituir a arquitetura do Middleware de Rate Limit do Banco pelo Redis.
+3.  **Adicionar Funcionalidades Básicas:** Serviço de email transacional para registro sólido dos usuários de mercado.
+4.  **Adicionar features SaaS:** Implementar os Webhooks do Stripe/Lemon e travar endpoints de inteligência com o controle de crédito atrelado à Collection respectiva no Qdrant.
+
+### Necessita Aprovação de Design
+* Você prefere utilizar **Redis** ou **banco em memória simples** (memcache interno, não escalável horizontalmente) para a etapa inicial de Rate Limiting?
+* Deseja migrar o SQLAlchemy inteiro de modo síncrono para o módulo **Assíncrono** (`asyncpg`) visando performance elevada de alto tráfego com o ASGI, ou manter síncrono por simplicidade no MVP inicial?

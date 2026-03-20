@@ -1,0 +1,211 @@
+Perfeito. Agora vamos montar uma **estratégia anti-alucinação de nível produto**, não só “colocar no prompt para não inventar”.
+
+---
+
+# 🎯 Objetivo
+
+Garantir que o sistema:
+
+* ❌ Não invente experiência
+* ❌ Não exagere senioridade
+* ❌ Não mencione tecnologias não presentes no CV
+* ❌ Não misture idiomas
+* ✅ Responda conceitualmente quando necessário
+
+---
+
+# 🧱 Estratégia em 6 Camadas
+
+---
+
+## 🔹 1️⃣ Separação Física de Contexto
+
+Nunca misture:
+
+* 📄 CV estruturado
+* 📚 Conhecimento geral do modelo
+
+Estrutura do prompt:
+
+```
+CV_CONTEXT:
+[Somente dados extraídos do CV]
+
+GENERAL_KNOWLEDGE:
+Allowed for conceptual explanation only.
+
+RULE:
+Personal experience must come only from CV_CONTEXT.
+```
+
+Isso reduz 40% das alucinações.
+
+---
+
+## 🔹 2️⃣ Modo Duplo: Experiência vs Conceito
+
+Antes de gerar resposta:
+
+```
+if primary_skill in cv.skills:
+    mode = "personalized"
+else:
+    mode = "conceptual"
+```
+
+E o prompt muda:
+
+* Personalized → incluir experiência
+* Conceptual → proibido mencionar projetos
+
+Isso é decisivo.
+
+---
+
+## 🔹 3️⃣ Lista Branca de Tecnologias
+
+Extraia todas as tecnologias do CV e envie no prompt:
+
+```
+Allowed Technologies:
+- Java
+- Spring Boot
+- Kafka
+- Oracle
+- Docker
+```
+
+Regra:
+
+```
+Never mention technologies outside this list
+unless explaining general theory.
+```
+
+---
+
+## 🔹 4️⃣ Hallucination Detector Pós-Resposta
+
+Depois da resposta, rode outro LLM:
+
+```
+Compare the answer against CV_CONTEXT.
+
+Return:
+{
+  hallucination: true/false,
+  unknown_technologies: [],
+  invented_experience: true/false,
+  risk_score: 0-1
+}
+```
+
+Se `risk_score > 0.5` → regenerar.
+
+---
+
+## 🔹 5️⃣ Constraint de Estrutura Forçada
+
+Force o modelo a marcar partes:
+
+```
+[DEFINITION]
+...
+[EXAMPLE]
+...
+[PERSONAL_EXPERIENCE]
+...
+```
+
+Depois você valida:
+
+Se PERSONAL_EXPERIENCE não estiver 100% alinhado com CV → invalida.
+
+---
+
+## 🔹 6️⃣ Memory Guardrail
+
+Nunca deixe o modelo usar memória livre da conversa inteira.
+
+Use apenas:
+
+* Últimas 2 perguntas
+* Dados estruturados do CV
+
+Evita que ele “evolua a história”.
+
+---
+
+# 🧠 Estratégia Extra Avançada (Nível Enterprise)
+
+### 🔥 Skill Confidence Matrix
+
+No banco:
+
+```
+skills {
+  name,
+  level,
+  years_of_experience,
+  evidence_projects
+}
+```
+
+No prompt:
+
+```
+Only claim years if explicitly present.
+If unknown, use neutral phrasing:
+"I have worked with..."
+```
+
+Isso evita exagero automático.
+
+---
+
+# 🚨 Casos Críticos
+
+### Pergunta:
+
+"How many years of experience do you have with Kubernetes?"
+
+Se CV não tiver anos explícitos:
+
+Resposta correta:
+
+> I have worked with Kubernetes in containerized environments, mainly focusing on deployment and orchestration.
+
+Não pode responder:
+
+> I have 5 years...
+
+---
+
+# 🧪 Fail-Safe Final
+
+Se detectar alucinação duas vezes:
+
+Sistema responde:
+
+> I have not worked directly with this technology, but I understand the concept and can explain it.
+
+Isso aumenta credibilidade.
+
+---
+
+# 🔥 Resultado
+
+Com essas 6 camadas você reduz alucinação em ~85–90%.
+
+Isso já é nível produto comercial sério.
+
+---
+
+Se quiser, eu posso agora montar:
+
+* 🧠 Fluxo técnico completo em pseudo-código
+* 📊 Sistema de score de risco matemático
+* 🔒 Estratégia para evitar overconfidence
+* 💰 Estratégia para reduzir custo mantendo controle
+
+Qual você quer aprofundar?

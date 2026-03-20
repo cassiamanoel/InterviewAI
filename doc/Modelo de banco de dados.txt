@@ -1,0 +1,164 @@
+Perfeito. Modelo já pensando em **SaaS multi-tenant, escalável e monetizável**.
+
+---
+
+# 🗄 Modelo de Banco de Dados (Postgres)
+
+## 🔹 1️⃣ users
+
+```sql
+users (
+  id UUID PK,
+  name VARCHAR,
+  email VARCHAR UNIQUE,
+  password_hash TEXT,
+  plan VARCHAR, -- free | pro | premium
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+```
+
+---
+
+## 🔹 2️⃣ cvs
+
+Um usuário pode ter múltiplas versões.
+
+```sql
+cvs (
+  id UUID PK,
+  user_id UUID FK(users),
+  raw_text TEXT,
+  structured_json JSONB,
+  embedding_version VARCHAR,
+  created_at TIMESTAMP
+)
+```
+
+---
+
+## 🔹 3️⃣ skills
+
+Normalização ajuda analytics depois.
+
+```sql
+skills (
+  id UUID PK,
+  user_id UUID FK(users),
+  name VARCHAR,
+  category VARCHAR, -- language | framework | db | cloud | tool
+  inferred_level VARCHAR,
+  created_at TIMESTAMP
+)
+```
+
+---
+
+## 🔹 4️⃣ interviews
+
+Cada sessão de entrevista.
+
+```sql
+interviews (
+  id UUID PK,
+  user_id UUID FK(users),
+  mode VARCHAR, -- technical | behavioral | mixed
+  target_company_type VARCHAR, -- bank | bigtech | startup
+  language VARCHAR,
+  overall_score NUMERIC,
+  created_at TIMESTAMP
+)
+```
+
+---
+
+## 🔹 5️⃣ questions
+
+```sql
+questions (
+  id UUID PK,
+  interview_id UUID FK(interviews),
+  question_text TEXT,
+  detected_language VARCHAR,
+  question_type VARCHAR, -- concept | experience | architecture | behavioral
+  created_at TIMESTAMP
+)
+```
+
+---
+
+## 🔹 6️⃣ answers
+
+```sql
+answers (
+  id UUID PK,
+  question_id UUID FK(questions),
+  answer_text TEXT,
+  technical_score NUMERIC,
+  communication_score NUMERIC,
+  fluency_score NUMERIC,
+  hallucination_flag BOOLEAN,
+  feedback TEXT,
+  created_at TIMESTAMP
+)
+```
+
+---
+
+## 🔹 7️⃣ progress_tracking
+
+Para evolução histórica.
+
+```sql
+progress_tracking (
+  id UUID PK,
+  user_id UUID FK(users),
+  metric VARCHAR, -- technical | communication | fluency
+  value NUMERIC,
+  measured_at TIMESTAMP
+)
+```
+
+---
+
+# 🧠 Vector DB (Qdrant)
+
+Collection por usuário:
+
+```
+collection: user_{id}_cv
+payload:
+{
+  chunk_text,
+  section,
+  skill_tags
+}
+```
+
+Isso permite:
+
+* RAG preciso
+* Evitar alucinação
+* Busca por skill específica
+
+---
+
+# 🔥 Pensando como produto
+
+Esse modelo permite:
+
+* Dashboard de evolução
+* Comparação por skill
+* Relatório exportável
+* Futuro ranking anônimo
+
+---
+
+Se quiser, próximo nível eu posso montar:
+
+* 📊 Diagrama ER visual
+* 📈 Estratégia de indexação e performance
+* 🧠 Modelo híbrido (relacional + eventos)
+* 💰 Estrutura para billing e Stripe
+
+Qual você quer agora?

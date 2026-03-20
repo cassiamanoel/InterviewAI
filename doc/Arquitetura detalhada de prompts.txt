@@ -1,0 +1,223 @@
+Perfeito. Agora vamos para o que realmente faz o produto ser bom: **Arquitetura de Prompts em camadas**.
+
+Sem isso, vira só um chat genérico.
+
+---
+
+# 🧠 Arquitetura de Prompts – Interview AI
+
+Vamos separar em **5 prompts especializados**, cada um com função clara.
+
+Isso evita:
+
+* alucinação
+* respostas genéricas
+* mistura de idioma
+* perda de contexto
+
+---
+
+# 🔹 1️⃣ Prompt: Language + Question Classifier
+
+### Objetivo:
+
+* Detectar idioma
+* Classificar tipo de pergunta
+* Extrair skill principal
+
+### Input:
+
+* Pergunta
+* Histórico recente
+
+### Output estruturado (JSON):
+
+```json
+{
+  "language": "es",
+  "question_type": "technical_concept",
+  "primary_skill": "TDD",
+  "confidence": 0.94
+}
+```
+
+### Prompt:
+
+```
+You are an interview question classifier.
+
+Tasks:
+1. Detect the language of the question.
+2. Classify the question type:
+   - technical_concept
+   - practical_experience
+   - architecture
+   - behavioral
+   - problem_solving
+3. Extract the primary technical skill mentioned.
+
+Return ONLY JSON.
+Do not explain.
+```
+
+---
+
+# 🔹 2️⃣ Prompt: Context Selector (RAG Control)
+
+### Objetivo:
+
+Decidir se usa CV ou responde conceitualmente.
+
+### Input:
+
+* Pergunta
+* Skill detectada
+* Lista de skills do CV
+
+### Output:
+
+```json
+{
+  "use_cv_context": true,
+  "matched_skills": ["JUnit", "Spring Boot"],
+  "reason": "TDD mentioned in CV experience"
+}
+```
+
+### Prompt:
+
+```
+You are a CV context validator.
+
+Check if the detected skill exists in the CV.
+If yes, allow personalization.
+If not, recommend conceptual answer only.
+
+Return JSON only.
+```
+
+---
+
+# 🔹 3️⃣ Prompt Principal: Answer Generator
+
+Esse é o coração.
+
+### Estrutura ideal:
+
+```
+SYSTEM:
+You are simulating the candidate in a real technical interview.
+
+Rules:
+- Respond in the same language as the question.
+- Do not invent experiences not present in CV.
+- If CV lacks the skill, answer conceptually.
+- Keep answers concise but professional.
+- Use structure: definition → example → personal experience (if available).
+
+CONTEXT:
+[CV structured data]
+[Relevant chunks from RAG]
+
+QUESTION:
+[User question]
+```
+
+---
+
+# 🔹 4️⃣ Prompt: Hallucination Checker
+
+Após gerar resposta:
+
+```
+Analyze the answer.
+
+Check if it contains:
+- Technologies not present in CV
+- Fake project details
+- Exaggerated experience
+
+Return:
+{
+  "hallucination_detected": true/false,
+  "risk_level": 0-1,
+  "problematic_parts": []
+}
+```
+
+Se risco > 0.6 → regenerar.
+
+---
+
+# 🔹 5️⃣ Prompt: Evaluator (Feedback Engine)
+
+Esse gera o diferencial do produto.
+
+```
+You are a senior technical interviewer.
+
+Evaluate the candidate answer in 3 dimensions:
+1. Technical Depth (0-10)
+2. Communication Clarity (0-10)
+3. Language Fluency (0-10)
+
+Provide short, actionable feedback.
+Be constructive.
+Respond in the same language as the answer.
+
+Return JSON.
+```
+
+---
+
+# 🔥 Fluxo Final Integrado
+
+```
+Pergunta →
+Classifier →
+Context Validator →
+Answer Generator →
+Hallucination Checker →
+Evaluator →
+Salvar no banco
+```
+
+---
+
+# 🎯 Estratégia Anti-Alucinação Robusta
+
+1. Separar CV estruturado de conhecimento geral
+2. Prompt explícito: "Never invent experience"
+3. Pós-validação automática
+4. Score de risco
+5. Regeneração se necessário
+
+---
+
+# 📈 Evolução futura de prompts
+
+Você pode ter:
+
+* Prompt especializado para:
+
+  * Big Tech
+  * Banco
+  * Startup
+  * Europa
+
+Cada um muda:
+
+* nível de exigência
+* profundidade esperada
+* estilo da resposta
+
+---
+
+Se você quiser, posso agora montar:
+
+* 🔥 Versão otimizada para reduzir custo de tokens
+* 🧠 Versão avançada com memória de sessão inteligente
+* 🎯 Prompt específico para entrevistas em inglês técnico
+* 📊 Estratégia para fine-tuning futuro
+
+Qual você quer aprofundar?

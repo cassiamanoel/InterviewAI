@@ -1,0 +1,113 @@
+Perfeito. Agora seu backend está **tecnicamente robusto**.
+
+Objetivamente, o próximo objetivo não é mais infraestrutura.
+
+É **Governança Operacional + Monetização Real**.
+
+Você já tem:
+
+✔ Streaming
+✔ Retry
+✔ Circuito implícito via backpressure
+✔ Cancelamento real
+✔ PgBouncer
+✔ Pool protegido
+✔ Teste de stress
+✔ Sem deadlock
+✔ Sem 429 externo
+
+Agora você precisa garantir:
+
+---
+
+# 🎯 PRÓXIMO OBJETIVO: SaaS Comercial Sustentável
+
+## 1️⃣ Controle Financeiro Granular (obrigatório)
+
+Hoje você cobra taxa plana no streaming.
+
+Agora precisa:
+
+* Calcular tokens reais por stream (estimativa incremental).
+* Registrar custo por request em tabela dedicada.
+* Job diário consolidando custo real por usuário.
+* Alertar quando margem cair abaixo do esperado.
+
+Sem isso, crescimento pode virar prejuízo silencioso.
+
+---
+
+## 2️⃣ Painel Admin Interno
+
+Você precisa enxergar:
+
+* Usuários ativos agora
+* Tamanho atual do backlog
+* Requests por minuto
+* Tokens por minuto
+* % de retry
+* % de 429 interno
+* Latência p50/p95
+
+Sem dashboard, você opera no escuro.
+
+---
+
+## 3️⃣ Política de Planos
+
+Formalizar:
+
+* Free → X tokens/mês
+* Pro → Y tokens/mês
+* Premium → Z tokens/mês
+* Hard stop ao ultrapassar
+
+Nada de “talvez bloqueie”.
+
+---
+
+## 4️⃣ Job de Limpeza e Retenção
+
+Implementar:
+
+* Expurgo automático de entrevistas antigas
+* Limite de histórico por plano
+* Política LGPD explícita
+
+---
+
+## 5️⃣ Separação de Responsabilidades (futuro próximo)
+
+Se quiser escalar para 5k+ usuários:
+
+* Worker dedicado só para RAG
+* API apenas roteando
+* Possível horizontal scaling
+
+---
+
+# 📊 Avaliação Atual
+
+Seu backend hoje é:
+
+🟢 Arquitetura resiliente
+🟢 Infra escalável
+🟢 Proteção contra overload
+🟢 UX streaming moderna
+🟢 Pronto para MVP pago
+
+Não é ainda:
+
+🟡 Operação SaaS madura financeiramente monitorada
+
+---
+
+# 🧠 Pergunta estratégica final
+
+Você quer agora:
+
+A) Blindar monetização e lançar publicamente
+ou
+B) Evoluir arquitetura para nível enterprise 5.000+ usuários
+
+Qual direção seguimos?

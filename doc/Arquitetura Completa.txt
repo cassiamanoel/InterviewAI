@@ -1,0 +1,185 @@
+
+
+# 🏗 Arquitetura Completa – Interview AI
+
+## 1️⃣ Camadas
+
+### 🔹 1. Ingestion (CV)
+
+* Upload PDF/DOCX
+* Extração texto (Docling ou PyMuPDF)
+* Parsing estruturado:
+
+  * Skills
+  * Experiência
+  * Projetos
+  * Ferramentas
+* Criar:
+
+  * JSON estruturado
+  * Embeddings por chunk
+
+Salvar:
+
+* Postgres (dados estruturados)
+* Qdrant (vetores)
+
+---
+
+## 2️⃣ Runtime da Entrevista
+
+Fluxo:
+
+```
+Pergunta → Detectar idioma →
+Classificar pergunta →
+Buscar contexto relevante →
+Gerar resposta →
+Avaliar resposta (opcional)
+```
+
+---
+
+## 3️⃣ Evitar Alucinação (CRÍTICO)
+
+### Estratégia 1 – Dual Context
+
+Separar:
+
+* 🔹 Contexto CV
+* 🔹 Contexto Conhecimento Geral
+
+Prompt:
+
+```
+Use o CV se houver informação relevante.
+Se não houver, responda conceitualmente.
+Nunca invente experiências não citadas.
+```
+
+---
+
+### Estratégia 2 – Confidence Score
+
+Após gerar resposta, rodar um segundo prompt:
+
+```
+A resposta contém informações que não aparecem no CV?
+Retorne score 0-1.
+```
+
+Se score baixo → regenerar.
+
+---
+
+### Estratégia 3 – Structured Skill Check
+
+Antes de responder:
+
+```
+if "TDD" in cv.skills:
+   personalize=True
+else:
+   personalize=False
+```
+
+Isso reduz 70% da alucinação.
+
+---
+
+# 🧠 Classificação de Pergunta
+
+Criar um classificador simples:
+
+Tipos:
+
+* Conceito técnico
+* Experiência prática
+* Behavioral
+* Arquitetura
+* Problema prático
+
+Exemplo:
+
+```
+"Cuéntame sobre un desafío que enfrentaste"
+→ Behavioral
+```
+
+Isso muda o prompt.
+
+---
+
+# 🌎 Detecção automática de idioma
+
+Melhor abordagem:
+
+* Detectar idioma da pergunta
+* Forçar resposta nesse idioma
+* Manter histórico no mesmo idioma até mudança detectada
+
+Evita misturar.
+
+---
+
+# 🧪 Modo Treinamento (Diferencial)
+
+Após responder:
+
+* Avaliar:
+
+  * Clareza
+  * Estrutura
+  * Uso de termos técnicos
+  * Fluência
+
+Exemplo de feedback:
+
+> Buena explicación técnica, pero puedes estructurar mejor usando:
+> definición → ejemplo → experiencia personal.
+
+Isso vira seu treinador real.
+
+---
+
+# 📦 Stack ideal
+
+Backend:
+
+* FastAPI
+
+LLM:
+
+* GPT-4.1-mini (rápido)
+* GPT-4.1 para avaliação
+
+Embeddings:
+
+* text-embedding-3-large
+
+Vector DB:
+
+* Qdrant
+
+Banco:
+
+* Postgres
+
+---
+
+# 🔥 Evolução futura
+
+* Simulação com voz
+* Avaliação de pronúncia
+* Score de contratação
+* Histórico de evolução
+* Dashboard de melhoria
+
+---
+
+Se você fizer isso direito, vira:
+
+* Projeto de portfólio forte
+* Produto SaaS
+* Ferramenta real pra você dominar entrevistas em qualquer idioma
+

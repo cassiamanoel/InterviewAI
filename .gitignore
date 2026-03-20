@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+backend/venv/
+frontend/node_modules/
+
+# next.js
+frontend/.next/
+frontend/out/
+
+# python
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.coverage
+backend/coverage.json
+backend/test_err.log
+backend/_collect_error.log
+backend/pytest_output.txt
+backend/stress_test_results.txt
+
+# environment files (crucial to ignore)
+.env
+backend/.env
+frontend/.env
+frontend/.env.local
+.env*.local
+
+# misc
+.DS_Store
+*.pem
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+.vercel

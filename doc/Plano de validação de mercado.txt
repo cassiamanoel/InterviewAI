@@ -1,0 +1,176 @@
+Perfeito. Agora vamos pensar como **founder**, não como dev.
+
+---
+
+# 🎯 Objetivo da Validação
+
+Descobrir:
+
+1. As pessoas realmente pagariam?
+2. O maior problema é idioma ou técnico?
+3. Qual público dói mais?
+4. Quanto estão dispostos a pagar?
+
+Sem isso, você constrói no escuro.
+
+---
+
+# 🧪 Fase 1 — Validação da Dor (2 semanas)
+
+## 🎯 Público inicial ideal
+
+* Devs LATAM tentando vaga:
+
+  * Europa
+  * Espanha
+  * Remoto internacional
+
+Porque:
+
+* Dor técnica + dor de idioma
+* Ticket médio maior
+
+---
+
+## 📋 Ação prática
+
+1. Criar landing simples (Carrd/Webflow)
+2. Headline clara:
+
+> “Simule entrevistas técnicas em inglês ou espanhol com base no seu próprio currículo.”
+
+3. Botão:
+
+> “Entrar na lista beta”
+
+4. Coletar:
+
+* Stack
+* País
+* Idioma desejado
+* Se já falhou em entrevista por idioma
+
+---
+
+## 📊 Métrica de sucesso
+
+Se 100 visitantes →
+
+* 20+ deixam email → dor validada
+* <10 → mensagem fraca ou problema menor
+
+---
+
+# 🧪 Fase 2 — MVP Concierge (Sem IA completa)
+
+Antes de construir tudo:
+
+1. Usuário envia CV
+2. Você roda manualmente o sistema
+3. Entrega simulação + feedback
+4. Cobra R$29 teste
+
+Se ninguém pagar R$29 → não tem mercado.
+
+---
+
+# 🧪 Fase 3 — Teste de Preço
+
+Enviar email para lista:
+
+Plano Pro:
+
+* Ilimitado
+* Score técnico
+* Simulação multilíngue
+* $15/mês
+
+Ver:
+
+* Quantos clicam em “Quero acesso antecipado”
+
+Meta:
+
+* 5–10% conversão da lista
+
+---
+
+# 🎯 Perguntas de Validação (mandar no email)
+
+1. Qual sua maior dificuldade?
+
+   * Inglês
+   * Estrutura de resposta
+   * Segurança/confiança
+   * Técnica
+
+2. Você já foi reprovado por idioma?
+
+3. Pagaria quanto por algo que aumente sua chance real?
+
+---
+
+# 📈 Segmentação Estratégica
+
+Você pode descobrir que:
+
+* Juniors querem técnico
+* Seniors querem fluência
+* LATAM quer espanhol
+* Brasil quer inglês
+
+Isso muda posicionamento.
+
+---
+
+# 🚀 Fase 4 — Produto Público (Soft Launch)
+
+* Liberar para 50 usuários
+* Medir:
+
+  * Sessões por semana
+  * Tempo médio
+  * Evolução de score
+  * Conversão free → pago
+
+---
+
+# 💰 Métrica que importa
+
+CAC < 1 mês de assinatura
+Ex:
+
+* Gasta $10 pra adquirir
+* Plano $15/mês
+* LTV > $45
+
+---
+
+# 🔥 Estratégia inteligente
+
+Você pode validar mais rápido ainda:
+
+Postar no LinkedIn:
+
+> “Estou construindo uma IA que simula entrevistas técnicas multilíngues baseadas no seu CV. Quem quer testar?”
+
+Se 30+ pessoas pedirem → validação forte.
+
+---
+
+# ⚠️ Erro clássico
+
+Construir tudo antes de vender.
+
+Valide interesse e pagamento primeiro.
+
+---
+
+Se você quiser, eu posso agora montar:
+
+* 📄 Copy da landing page persuasiva
+* 💰 Estratégia de preço ideal
+* 📈 Plano de aquisição orgânico (LinkedIn)
+* 🎯 Estratégia de posicionamento internacional
+
+Qual você quer agora?

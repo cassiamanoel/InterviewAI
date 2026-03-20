@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  backend:
+    build: .
+    container_name: interview-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@pgbouncer:5432/interview_db
+      - QDRANT_URL=http://qdrant:6333
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_URL=http://localhost:3000
+    depends_on:
+      - pgbouncer
+      - qdrant
+      - redis
+
+  postgres:
+    image: postgres:15
+    container_name: interview-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: interview_db
+    ports:
+      - "5432:5432"
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: interview-pgbouncer
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/interview_db
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 20
+      POOL_MODE: transaction
+    ports:
+      - "6432:5432"
+    depends_on:
+      - postgres
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: interview-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  redis:
+    image: redis:alpine
+    container_name: interview-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  qdrant_data:

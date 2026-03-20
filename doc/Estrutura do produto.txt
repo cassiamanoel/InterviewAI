@@ -1,0 +1,148 @@
+Perfeito. Então vamos estruturar como **produto sério**, com visão de crescimento e monetização.
+
+---
+
+# 🎯 Posicionamento
+
+**Plataforma SaaS de preparação para entrevistas técnicas multilíngue, personalizada pelo CV.**
+
+Foco ideal para você:
+**LATAM + Europa (ES/EN)** → maior dor com idioma + perfil tech forte.
+
+---
+
+# 🧱 Estrutura do Produto (Camadas)
+
+## 1️⃣ Core (obrigatório no MVP)
+
+### 🔹 Upload e Inteligência do CV
+
+* Parser de PDF/DOCX
+* Estruturação automática:
+
+  * Linguagens
+  * Frameworks
+  * Bancos
+  * Projetos
+  * Senioridade inferida
+
+Salvar:
+
+* Postgres (estrutura)
+* Qdrant (vetores por usuário)
+
+---
+
+### 🔹 Engine de Entrevista
+
+Fluxo:
+
+```
+Pergunta →
+Detectar idioma →
+Classificar tipo →
+Buscar contexto do CV →
+Gerar resposta →
+Avaliar →
+Salvar score
+```
+
+---
+
+### 🔹 Avaliação Inteligente
+
+Score em 3 dimensões:
+
+* Technical depth
+* Communication clarity
+* Language fluency
+
+Gerar feedback acionável:
+
+> Estruture melhor em: definição → exemplo → experiência real.
+
+---
+
+# 🧠 Diferencial de Mercado
+
+1. Responde no idioma da pergunta automaticamente
+2. Não inventa experiência (RAG + validação)
+3. Mostra evolução histórica
+4. Simula tipos de empresa (Banco, Big Tech, Startup)
+
+Isso já diferencia de qualquer “mock interview genérico”.
+
+---
+
+# 💰 Modelo de Negócio
+
+### Free
+
+* 3 entrevistas/mês
+* Sem score detalhado
+
+### Pro (~$15/mês)
+
+* Ilimitado
+* Score avançado
+* Histórico de evolução
+* Simulação por empresa
+
+### Premium (~$29/mês)
+
+* Simulação por voz
+* Análise de pronúncia
+* Relatório exportável PDF
+
+---
+
+# ⚙️ Arquitetura Técnica SaaS
+
+Backend:
+
+* FastAPI
+* JWT Auth
+* Multi-tenant
+
+Banco:
+
+* Postgres
+* Qdrant
+
+Infra:
+
+* Docker
+* Deploy AWS / Railway
+
+LLM:
+
+* GPT-4.1-mini (resposta)
+* GPT-4.1 (avaliação)
+
+---
+
+# 📊 Métricas que importam
+
+* Tempo médio por sessão
+* Número de sessões por usuário
+* Melhora de score ao longo do tempo
+* Conversão Free → Pro
+
+---
+
+# 🚀 Roadmap Estratégico
+
+Fase 1 (30 dias) → MVP funcional
+Fase 2 → Score + Dashboard
+Fase 3 → Voz + Pronúncia
+Fase 4 → B2B (vender para bootcamps / empresas)
+
+---
+
+Se você quiser, próximo passo posso montar:
+
+* 📌 Modelo de banco de dados
+* 📌 Arquitetura detalhada de prompts
+* 📌 Estratégia anti-alucinação robusta
+* 📌 Plano de validação de mercado
+

@@ -1,0 +1,32 @@
+# Plano de Testes Unitários – Interview AI
+
+Com base na arquitetura e nas rotas existentes no projeto (como Auth, CV, Interview, Billing, Health e middlewares/services), vamos implementar uma suite de testes unitários utilizando o `pytest` e `httpx` (para o `TestClient` do FastAPI) e `pytest-asyncio` para os serviços assíncronos.
+
+## O que será testado?
+
+### 1. Rotas Básicas (Endpoints)
+- **[tests/test_health.py](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/tests/test_health.py)**: Validar se o endpoint `/health` retorna `status: ok` e o código 200.
+- **`tests/api/test_auth.py`** (Simulado):
+  - Criar um mock para o banco de dados.
+  - Testar fluxo de login básico e falha de login (usuário/senha incorretos) caso os schemas exijam.
+
+### 2. Serviços Avançados e Middleware (Features novas)
+- **`tests/services/test_redis_store.py`**:
+  - Mockar a conexão do `redis.asyncio`.
+  - Simular contagem de limite e testar se [check_rate_limit](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/app/services/redis_store.py#17-37) barra a ação após estourar [limit](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/app/services/redis_store.py#17-37) (ex: 20 requisições).
+- **`tests/services/test_billing.py`**:
+  - Testar localmente a classe [BillingService](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/app/services/billing_service.py#3-35) para verificar a geração de URL do checkout ([create_checkout_session(plan="pro")](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/app/services/billing_service.py#8-16)).
+- **`tests/services/test_email.py`**:
+  - Testar o comportamento do stub do [EmailService](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/app/services/email_service.py#1-21) para garantir que [send_welcome_email](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/app/services/email_service.py#6-14) e [send_password_reset](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/app/services/email_service.py#15-21) chamam corretamente a função/mock e retornam `True`.
+
+### 3. Dependências do Teste
+- **[backend/requirements.txt](file:///c:/Users/andre/OneDrive/Documentos/Interview%20AI/backend/requirements.txt)**:
+  - Adicionar `pytest`, `pytest-asyncio` e `httpx` (para rodar chamadas cliente locais async com FastAPI).
+- **`backend/conftest.py`**:
+  - Criar fixture do app, permitindo _dependency overrides_ do `get_db` e do _get_current_user_ para isolar o banco durante os testes de rota.
+
+## Plano de Ação
+1. Inserir dependências.
+2. Criar `conftest.py` para injetar configurações.
+3. Criar e estender diretórios de teste (`tests/api/`, `tests/services/`).
+4. Escrever testes para os módulos principais desacoplados (redis, billing, email, auth e middlewares base).
