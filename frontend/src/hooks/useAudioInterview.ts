@@ -53,7 +53,10 @@ export function useAudioInterview() {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify({ question: finalQuestion }),
+                body: JSON.stringify({ 
+                    question: finalQuestion,
+                    language: sessionLanguage
+                }),
                 signal: controller.signal
             });
 

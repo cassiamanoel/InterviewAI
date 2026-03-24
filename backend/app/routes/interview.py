@@ -59,6 +59,7 @@ async def ask(
         result_gen = await RAGService.ask_question(
             user_id=str(current_user.id),
             question=question,
+            language=body.language,
             top_k=5,
             stream=True
         )
@@ -70,6 +71,7 @@ async def ask(
         result = await RAGService.ask_question(
             user_id=str(current_user.id),
             question=question,
+            language=body.language,
             top_k=5,
             stream=False
         )

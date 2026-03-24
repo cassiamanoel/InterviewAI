@@ -14,10 +14,16 @@ from qdrant_client.http.models import (
 
 from app.core.config import settings
 
+_qdrant_client: Optional[AsyncQdrantClient] = None
+
 class QdrantStore:
 
     def __init__(self):
-        self.client = AsyncQdrantClient(url=settings.QDRANT_URL)
+        global _qdrant_client
+        if _qdrant_client is None:
+            _qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL)
+        
+        self.client = _qdrant_client
         self.collection_name = settings.QDRANT_COLLECTION
 
     # =========================

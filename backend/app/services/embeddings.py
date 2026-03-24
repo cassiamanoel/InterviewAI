@@ -29,12 +29,14 @@ class EmbeddingService:
             "input": texts
         }
 
+        from app.core.http_client import HttpClient
+        client = await HttpClient.get_client()
+
         async with _embedding_semaphore:
             try:
-                async with httpx.AsyncClient(timeout=60) as client:
-                    response = await client.post(url, headers=headers, json=payload)
-                    response.raise_for_status()
-                    data = response.json()
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
             except httpx.HTTPError as e:
                 raise RuntimeError(f"Erro ao gerar embedding: {str(e)}")
 

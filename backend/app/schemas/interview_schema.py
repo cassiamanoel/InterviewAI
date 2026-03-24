@@ -4,6 +4,7 @@ from typing import List, Optional
 
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=3, max_length=2000)
+    language: Optional[str] = Field("pt", description="Idioma alvo da resposta")
 
 
 class SourceItem(BaseModel):
