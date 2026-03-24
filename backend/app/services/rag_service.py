@@ -1,9 +1,11 @@
 import json
 import logging
 import asyncio
+import re
 from typing import List, Dict, Any, Optional
 
 import httpx
+from lingua import Language, LanguageDetectorBuilder
 from tenacity import (
     stop_after_attempt,
     wait_exponential,
@@ -18,16 +20,127 @@ from app.services.embeddings import EmbeddingService
 
 logger = logging.getLogger("app")
 
+# ============================
+# LINGUA DETECTOR (Singleton)
+# ============================
+# Lingua é superior ao langdetect para textos curtos.
+# Carrega apenas os idiomas que nos interessam → rápido e preciso.
+_lingua_detector = LanguageDetectorBuilder.from_languages(
+    Language.PORTUGUESE, Language.ENGLISH, Language.SPANISH,
+    Language.FRENCH, Language.GERMAN, Language.ITALIAN
+).with_preloaded_language_models().build()
+
 # Semáforo para controlar concorrência na OpenAI
 _chat_semaphore = asyncio.Semaphore(20)
 
 def acquire_chat_semaphore():
     return _chat_semaphore
 
+
 class RAGService:
 
     # =========================
-    # CHAT CORE (REUSABLE)
+    # DETECÇÃO DE IDIOMA (PRO)
+    # =========================
+
+    @staticmethod
+    def _normalize_input(text: str) -> str:
+        return text.lower().strip()
+
+    @staticmethod
+    def _is_portuguese(text: str) -> bool:
+        """Heurística PT: resolve frases curtas e sem acento."""
+        pt_keywords = [
+            "você", "vc", "seu", "sua", "cor", "hobby", "hobbies",
+            "trabalho", "experiência", "experiencia", "forte", "fraco",
+            "fala", "sobre", "empresa", "gosta", "faz", "atualmente",
+            "cargo", "salário", "salario", "pontos", "fortes", "fracos",
+            "qual", "quais", "como", "onde", "quando", "porque", "porquê",
+            "meu", "minha", "nosso", "nossa", "dele", "dela",
+            "projeto", "equipe", "time", "líder", "lider",
+            "favorita", "favorito", "prefere", "preferido",
+            "maior", "melhor", "pior", "dificuldade",
+            "conte", "descreva", "explique", "poderia",
+            "já", "nunca", "sempre", "também", "tambem"
+        ]
+        text = text.lower()
+        return any(word in text for word in pt_keywords)
+
+    @staticmethod
+    def _detect_language(text: str) -> str:
+        """Pipeline de detecção: Heurística PT → Lingua (PRO) → Fallback EN."""
+        normalized = text.lower().strip()
+
+        # 1. Prioridade absoluta: Português (resolve frases curtas)
+        if RAGService._is_portuguese(normalized):
+            return "pt"
+
+        # 2. Lingua detector (superior ao langdetect para textos curtos)
+        try:
+            detected = _lingua_detector.detect_language_of(text)
+            if detected:
+                lang_map = {
+                    Language.PORTUGUESE: "pt",
+                    Language.ENGLISH: "en",
+                    Language.SPANISH: "es",
+                    Language.FRENCH: "fr",
+                    Language.GERMAN: "de",
+                    Language.ITALIAN: "it",
+                }
+                return lang_map.get(detected, "en")
+        except Exception:
+            pass
+
+        # 3. Fallback seguro
+        return "en"
+
+    # =========================
+    # TOM CULTURAL (BR/US/ES)
+    # =========================
+
+    @staticmethod
+    def _map_culture(lang: str) -> str:
+        if lang == "pt":
+            return "BR"
+        if lang == "es":
+            return "ES"
+        return "US"
+
+    @staticmethod
+    def _get_language_name(lang_code: str) -> str:
+        names = {
+            "pt": "Portuguese", "es": "Spanish", "en": "English",
+            "fr": "French", "de": "German", "it": "Italian"
+        }
+        return names.get(lang_code, "English")
+
+    @staticmethod
+    def _build_system_prompt(language_code: str) -> str:
+        lang_name = RAGService._get_language_name(language_code)
+        culture = RAGService._map_culture(language_code)
+
+        return f"""
+PAPEL: Você é um CANDIDATO em uma entrevista de emprego (Entrevistado).
+
+IDIOMA (REGRA DE OURO):
+- Responda SEMPRE em: {lang_name}.
+- Português é idioma prioritário. Mesmo com erro, gíria ou frase curta, trate como português se houver indícios.
+- Exemplos válidos de PT: "cor favorita", "seus hobbies", "pontos fortes", "fala sobre vc".
+- Nunca classifique português como inválido. Sempre responda normalmente.
+- Se o recrutador mudar de idioma, mude junto instantaneamente sem avisar.
+
+TOM CULTURAL ({culture}):
+{"- Tom natural, próximo e conversacional." if culture == "BR" else ""}{"- Pode usar leve emoção e foco em relacionamento + entrega." if culture == "BR" else ""}{"- Menos formal, mais empático e humano." if culture == "BR" else ""}{"- Tom direto, objetivo e estruturado." if culture == "US" else ""}{"- Foco em resultado e impacto mensurável." if culture == "US" else ""}{"- Segurança, clareza e concisão." if culture == "US" else ""}{"- Tom profissional e respeitoso." if culture == "ES" else ""}{"- Formal moderado, levemente mais explicativo." if culture == "ES" else ""}{"- Profissionalismo clássico e colaborativo." if culture == "ES" else ""}
+
+REGRAS CRÍTICAS:
+- NUNCA faça perguntas de volta.
+- NUNCA peça reformulação ou diga que não entendeu.
+- Sempre infira a intenção e responda diretamente.
+- Termine a resposta de forma fechada e segura.
+"""
+
+    # =========================
+    # CHAT CORE
     # =========================
 
     @staticmethod
@@ -63,8 +176,6 @@ class RAGService:
                     with attempt:
                         async with acquire_chat_semaphore():
                             response = await client.post(url, headers=headers, json=payload)
-                            if response.status_code == 429:
-                                logger.warning("OpenAI Rate Limit 429. Aguardando backoff...")
                             response.raise_for_status()
                             data = response.json()
 
@@ -101,17 +212,12 @@ class RAGService:
             return _stream_generator()
 
     @staticmethod
-    async def _chat_direct_persona(question: str, language: str, stream: bool) -> Any:
-        # 🚀 REGRAS DE PERSONA (Atalho de Performance)
-        system_prompt = (
-            "PAPEL: CANDIDATO (Entrevistado). Você NÃO é o recrutador.\n"
-            f"IDIOMA: Responda obrigatoriamente no idioma {language.upper()}.\n\n"
-            "ESTILO PARA PERGUNTAS PESSOAIS (Hobbies, Cores, Lazer):\n"
-            "- Respostas CURTAS, OBJETIVAS, HUMANAS e GENTIS.\n"
-            "- Seja direto, sem rodeios ou excesso de texto.\n"
-            "- NUNCA faça perguntas de volta.\n"
-            "- Infira a intenção de palavras-chave curtas automaticamente e responda normalmente."
-        )
+    async def _chat_direct_persona(question: str, language_code: str, stream: bool) -> Any:
+        system_prompt = RAGService._build_system_prompt(language_code)
+        
+        if len(question.split()) <= 3:
+            system_prompt += "\nESTILO: Resposta curta e objetiva."
+
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question}
@@ -135,11 +241,20 @@ class RAGService:
     # =========================
 
     @staticmethod
-    async def ask_question(user_id: str, question: str, language: str = "pt", top_k: int = 5, stream: bool = False) -> Any:
-        persona_keywords = ["color", "favorite", "hobby", "like", "do you", "você", "gosta", "favorit", "quem", "cor", "hobby", "lazer", "café", "tempo livre"]
-        if any(kw in question.lower() for kw in persona_keywords):
-            return await RAGService._chat_direct_persona(question, language, stream)
+    async def ask_question(user_id: str, question: str, language: str = "auto", top_k: int = 5, stream: bool = False) -> Any:
+        # 1. Pipeline de Detecção PRO
+        normalized = RAGService._normalize_input(question)
+        lang_detected = RAGService._detect_language(normalized) if language == "auto" else language
 
+        # 2. Atalho de Persona (Inferência + Performance)
+        persona_keywords = [
+            "color", "favorite", "hobby", "like", "do you", "você", "gosta", "favorit", "quem", "cor", 
+            "lazer", "café", "tempo livre", "what do you do", "fala", "sobre", "vc", "hobbies"
+        ]
+        if any(kw in normalized for kw in persona_keywords) or len(normalized.split()) <= 2:
+            return await RAGService._chat_direct_persona(question, lang_detected, stream)
+
+        # 3. Embedding & Search
         try:
             embeddings = await EmbeddingService.embed_texts([question])
             q_vec = embeddings[0]
@@ -147,9 +262,9 @@ class RAGService:
             hits = await store.search(query_vector=q_vec, user_id=user_id, limit=top_k)
         except Exception as e:
             logger.error(f"RAG Search failed: {e}")
-            return await RAGService._chat_direct_persona(question, language, stream)
+            return await RAGService._chat_direct_persona(question, lang_detected, stream)
 
-        # Build Context
+        # 4. Contexto
         contexts, sources = [], []
         if hits:
             for h in hits:
@@ -163,21 +278,11 @@ class RAGService:
                 })
         
         context_block = "\n\n---\n\n".join(contexts)[:6000]
-
-        # REGRAS DE RESPOSTA COMPLETA PARA TÉCNICO/PROFISSIONAL
-        system_prompt = (
-            "PAPEL: CANDIDATO (Entrevistado). Você NÃO é o recrutador.\n"
-            f"IDIOMA: Responda obrigatoriamente no idioma {language.upper()}.\n\n"
-            "DIRETRIZES PROFISSIONAIS:\n"
-            "- Respostas diretas e completas para temas profissionais baseadas no CV.\n"
-            "- NUNCA devolva perguntas.\n"
-            "- Se for um tema pessoal que escapou do atalho, seja CURTO, OBJETIVO e GENTIL.\n"
-            "- Jamais peça para reformular. Nunca diga 'não entendi'."
-        )
+        system_prompt = RAGService._build_system_prompt(lang_detected)
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"RECUTADOR: {question}\n\nSEU CURRÍCULO (CONTEXTO):\n{context_block}"}
+            {"role": "user", "content": f"RECRUTADOR: {question}\n\nCONTEXTO DO SEU CV:\n{context_block}"}
         ]
 
         chat_result = await RAGService._chat(messages, stream=stream)

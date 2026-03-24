@@ -62,7 +62,21 @@ export function useSpeechRecognition({
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = language;
+        
+        // Mapeamento de idiomas e suporte a Auto-Detect
+        // IMPORTANTE: Web Speech API NÃO suporta auto-detect.
+        // No modo "auto", usamos pt-BR como padrão (idioma principal do usuário).
+        // O backend (Lingua) cuida da detecção real do idioma do TEXTO.
+        let runLang = language;
+        if (language === "auto") {
+            runLang = "pt-BR";
+        } else if (language === "pt") {
+            runLang = "pt-BR";
+        } else if (language === "es") {
+            runLang = "es-ES";
+        }
+        
+        recognition.lang = runLang;
         recognitionRef.current = recognition;
 
         recognition.onstart = () => {
@@ -148,16 +162,42 @@ export function useSpeechRecognition({
     }, [language, silenceThresholdMs]);
 
     const startListening = useCallback(() => {
-        if (recognitionRef.current && !isListeningRef.current) {
-            currentBufferRef.current = "";
-            setTranscript("");
-            isListeningRef.current = true;
-            try {
-                recognitionRef.current.start();
-            } catch (e) {
-                console.error("Could not start recognition", e);
-                isListeningRef.current = false;
-            }
+        if (!recognitionRef.current) return;
+        
+        // Se já estamos ouvindo segundo nossa ref, não fazemos nada
+        if (isListeningRef.current) {
+            console.log("⚠️ Já está ouvindo (ref)");
+            return;
+        }
+
+        currentBufferRef.current = "";
+        setTranscript("");
+        isListeningRef.current = true;
+        
+        try {
+            // Pequeno hack: abortamos qualquer processamento pendente antes de iniciar 
+            // para garantir que a instância esteja limpa
+            recognitionRef.current.abort(); 
+            
+            // Damos um fôlego para o navegador processar o abort
+            setTimeout(() => {
+                try {
+                    if (isListeningRef.current) { // Verifica se ainda queremos ouvir
+                        recognitionRef.current.start();
+                    }
+                } catch (e) {
+                    // Se ainda der erro de "already started", ignoramos pois o objetivo era estar iniciado mesmo
+                    if (!(e instanceof Error && e.message.includes("already started"))) {
+                        console.error("Erro ao iniciar Recognition no timeout", e);
+                        isListeningRef.current = false;
+                        setIsListening(false);
+                    }
+                }
+            }, 50);
+        } catch (e) {
+            console.error("Erro crítico no startListening", e);
+            isListeningRef.current = false;
+            setIsListening(false);
         }
     }, []);
 

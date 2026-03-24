@@ -9,7 +9,7 @@ import { NEXT_PUBLIC_API_URL } from "@/lib/config";
 export default function DashboardPage() {
     const router = useRouter();
     const [file, setFile] = useState<File | null>(null);
-    const [language, setLanguage] = useState<string>("en-US");
+    const [language, setLanguage] = useState<string>("auto");
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -123,8 +123,9 @@ export default function DashboardPage() {
                             2. Interview Language
                         </h2>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {[
+                                { code: "auto", label: "Auto Detect" },
                                 { code: "en-US", label: "English" },
                                 { code: "pt-BR", label: "Portuguese" },
                                 { code: "es-ES", label: "Spanish" },

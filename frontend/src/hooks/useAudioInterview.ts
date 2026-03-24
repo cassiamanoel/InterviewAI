@@ -14,7 +14,7 @@ export type InterviewInteraction = {
 };
 
 export function useAudioInterview() {
-    const [sessionLanguage, setSessionLanguage] = useState("en-US");
+    const [sessionLanguage, setSessionLanguage] = useState("auto");
     const [audioState, setAudioState] = useState<AudioState>("idle");
     const [transcript, setTranscript] = useState("");
     const [interactions, setInteractions] = useState<InterviewInteraction[]>([]);
@@ -24,7 +24,7 @@ export function useAudioInterview() {
 
     useEffect(() => {
         if (typeof window !== "undefined") {
-            const lang = localStorage.getItem("interview_language") || "en-US";
+            const lang = localStorage.getItem("interview_language") || "auto";
             setSessionLanguage(lang);
         }
     }, []);
