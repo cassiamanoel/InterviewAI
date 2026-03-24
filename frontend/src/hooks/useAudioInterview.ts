@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { NEXT_PUBLIC_API_URL } from "@/lib/config";
 import { getToken } from "@/lib/api";
 import { useSpeechRecognition } from "./useSpeechRecognition";
+import { useWhisperRecognition } from "./useWhisperRecognition";
 
 export type AudioState = "idle" | "listening" | "thinking" | "error";
 
@@ -21,6 +22,7 @@ export function useAudioInterview() {
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     const abortControllerRef = useRef<AbortController | null>(null);
+    const audioStateRef = useRef<AudioState>("idle");
 
     useEffect(() => {
         if (typeof window !== "undefined") {
@@ -29,21 +31,34 @@ export function useAudioInterview() {
         }
     }, []);
 
-    const handleQuestionDetected = useCallback(async (finalQuestion: string) => {
-        if (!finalQuestion.trim()) return;
-        if (audioState === "thinking") return; // Prevent overlapping submits
+    // Mantém ref do audioState para evitar closures stale em callbacks
+    useEffect(() => {
+        audioStateRef.current = audioState;
+    }, [audioState]);
 
-        // Add new interaction placeholder
+    const isAutoMode = sessionLanguage === "auto";
+
+    /*
+     * handleQuestionDetected
+     * Recebe a pergunta transcrita e o idioma detectado.
+     * No modo Whisper, o idioma vem do Whisper/Lingua.
+     * No modo Web Speech, o idioma é o sessionLanguage.
+     */
+    const handleQuestionDetected = useCallback(async (finalQuestion: string, detectedLanguage?: string) => {
+        if (!finalQuestion.trim()) return;
+        if (audioStateRef.current === "thinking") return;
+
         const interactionId = Date.now().toString();
         setInteractions(prev => [...prev, { id: interactionId, question: finalQuestion, answer: "" }]);
 
-        // We DO NOT stop listening! Copilot must keep listening to the meeting!
-        // But for visual feedback, we mark state as thinking.
         setAudioState("thinking");
         setErrorMsg(null);
 
         const controller = new AbortController();
         abortControllerRef.current = controller;
+
+        // Se Whisper nos deu um idioma detectado, usamos ele; senão fallback do sessionLanguage
+        const langToSend = detectedLanguage || sessionLanguage;
 
         try {
             const token = getToken();
@@ -55,7 +70,7 @@ export function useAudioInterview() {
                 },
                 body: JSON.stringify({ 
                     question: finalQuestion,
-                    language: sessionLanguage
+                    language: langToSend
                 }),
                 signal: controller.signal
             });
@@ -97,12 +112,11 @@ export function useAudioInterview() {
                 }
             }
 
-            // Generation complete. Back to listening state visually.
             setAudioState("listening");
 
         } catch (err: any) {
             if (err.name === "AbortError") {
-                console.log("Copilot Request Aborted");
+                console.log("Request Aborted");
             } else {
                 setErrorMsg(err.message || "Pipeline error");
                 setAudioState("error");
@@ -110,34 +124,62 @@ export function useAudioInterview() {
         } finally {
             abortControllerRef.current = null;
         }
-    }, [audioState]);
+    }, [sessionLanguage]);
 
-    const speech = useSpeechRecognition({
-        language: sessionLanguage,
+    // ========================
+    // MODO AUTO → Whisper
+    // ========================
+    const whisper = useWhisperRecognition({
         onQuestionDetected: handleQuestionDetected,
-        silenceThresholdMs: 2500 // 2.5 seconds of silence
+        silenceThresholdMs: 3000,
+        apiBaseUrl: NEXT_PUBLIC_API_URL
     });
 
-    // Sync internal transcript with speech transcript
+    // ========================
+    // MODO FIXO → Web Speech API
+    // ========================
+    const speech = useSpeechRecognition({
+        language: sessionLanguage,
+        onQuestionDetected: (q) => handleQuestionDetected(q, sessionLanguage),
+        silenceThresholdMs: 2500
+    });
+
+    // Sync transcript com o modo ativo
     useEffect(() => {
-        if (speech.isListening && audioState !== "listening" && audioState !== "thinking") {
+        const activeTranscript = isAutoMode ? whisper.transcript : speech.transcript;
+        const isActive = isAutoMode ? whisper.isListening : speech.isListening;
+
+        if (isActive && audioState !== "listening" && audioState !== "thinking") {
             setAudioState("listening");
         }
-        setTranscript(speech.transcript);
-    }, [speech.isListening, speech.transcript, audioState]);
+        setTranscript(activeTranscript);
+    }, [
+        whisper.isListening, whisper.transcript,
+        speech.isListening, speech.transcript,
+        audioState, isAutoMode
+    ]);
 
     const startSession = useCallback(() => {
         setAudioState("listening");
         setErrorMsg(null);
         setTranscript("");
-        speech.startListening();
-    }, [speech]);
+
+        if (isAutoMode) {
+            whisper.startListening();
+        } else {
+            speech.startListening();
+        }
+    }, [isAutoMode, whisper, speech]);
 
     const stopSession = useCallback(() => {
-        speech.stopListening();
+        if (isAutoMode) {
+            whisper.stopListening();
+        } else {
+            speech.stopListening();
+        }
         if (abortControllerRef.current) abortControllerRef.current.abort();
         setAudioState("idle");
-    }, [speech]);
+    }, [isAutoMode, whisper, speech]);
 
     return {
         startSession,
@@ -147,6 +189,8 @@ export function useAudioInterview() {
         interactions,
         errorMsg,
         language: sessionLanguage,
-        isSupported: speech.isSupported
+        isAutoMode,
+        isProcessing: whisper.isProcessing,
+        isSupported: isAutoMode ? whisper.isSupported : speech.isSupported
     };
 }

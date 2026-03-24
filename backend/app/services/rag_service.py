@@ -119,6 +119,26 @@ class RAGService:
         lang_name = RAGService._get_language_name(language_code)
         culture = RAGService._map_culture(language_code)
 
+        culture_block = ""
+        if culture == "BR":
+            culture_block = (
+                "- Tom natural, próximo e conversacional.\n"
+                "- Pode usar leve emoção e foco em relacionamento + entrega.\n"
+                "- Menos formal, mais empático e humano."
+            )
+        elif culture == "US":
+            culture_block = (
+                "- Tom direto, objetivo e estruturado.\n"
+                "- Foco em resultado e impacto mensurável.\n"
+                "- Segurança, clareza e concisão."
+            )
+        elif culture == "ES":
+            culture_block = (
+                "- Tom profissional e respeitoso.\n"
+                "- Formal moderado, levemente mais explicativo.\n"
+                "- Profissionalismo clássico e colaborativo."
+            )
+
         return f"""
 PAPEL: Você é um CANDIDATO em uma entrevista de emprego (Entrevistado).
 
@@ -130,7 +150,7 @@ IDIOMA (REGRA DE OURO):
 - Se o recrutador mudar de idioma, mude junto instantaneamente sem avisar.
 
 TOM CULTURAL ({culture}):
-{"- Tom natural, próximo e conversacional." if culture == "BR" else ""}{"- Pode usar leve emoção e foco em relacionamento + entrega." if culture == "BR" else ""}{"- Menos formal, mais empático e humano." if culture == "BR" else ""}{"- Tom direto, objetivo e estruturado." if culture == "US" else ""}{"- Foco em resultado e impacto mensurável." if culture == "US" else ""}{"- Segurança, clareza e concisão." if culture == "US" else ""}{"- Tom profissional e respeitoso." if culture == "ES" else ""}{"- Formal moderado, levemente mais explicativo." if culture == "ES" else ""}{"- Profissionalismo clássico e colaborativo." if culture == "ES" else ""}
+{culture_block}
 
 REGRAS CRÍTICAS:
 - NUNCA faça perguntas de volta.

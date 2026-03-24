@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import auth, cv, interview, billing
+from app.routes import auth, cv, interview, billing, transcribe
 from app.middlewares.rate_limit import RateLimitMiddleware
 from app.middlewares.request_logger import RequestLoggerMiddleware
 from app.core.logging import setup_logging
@@ -54,6 +54,7 @@ app.include_router(auth.router, tags=["Auth"])
 app.include_router(cv.router, tags=["CV"])
 app.include_router(interview.router, tags=["Interview"])
 app.include_router(billing.router, tags=["Billing"])
+app.include_router(transcribe.router, tags=["Transcribe"])
 
 # =========================
 # HEALTH CHECK
