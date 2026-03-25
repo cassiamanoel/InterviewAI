@@ -61,7 +61,8 @@ async def ask(
             question=question,
             language=body.language,
             top_k=5,
-            stream=True
+            stream=True,
+            about_text=body.about_text
         )
 
         return StreamingResponse(result_gen, media_type="text/event-stream")
@@ -73,7 +74,8 @@ async def ask(
             question=question,
             language=body.language,
             top_k=5,
-            stream=False
+            stream=False,
+            about_text=body.about_text
         )
 
         tokens_used = int(result.get("tokens") or 0)

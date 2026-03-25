@@ -115,7 +115,7 @@ class RAGService:
         return names.get(lang_code, "English")
 
     @staticmethod
-    def _build_system_prompt(language_code: str) -> str:
+    def _build_system_prompt(language_code: str, has_user_context: bool = False) -> str:
         lang_name = RAGService._get_language_name(language_code)
         culture = RAGService._map_culture(language_code)
 
@@ -139,6 +139,22 @@ class RAGService:
                 "- Profissionalismo clássico e colaborativo."
             )
 
+        # Data sourcing rules adapt based on whether user provided context
+        if has_user_context:
+            data_rules = """
+FONTE DE DADOS (PRIORIDADE):
+- Prioridade 1 (ABSOLUTA): Dados fornecidos pelo usuário (CV ou texto descritivo). Baseie suas respostas PRIMARIAMENTE nesses dados.
+- Prioridade 2 (COMPLEMENTO): Quando os dados do usuário não contêm informação suficiente para uma resposta completa, complemente com conhecimento técnico geral relevante à área do candidato.
+- NUNCA invente informações sobre o usuário (experiências, empresas, projetos, habilidades que não foram mencionados).
+- NUNCA dê respostas genéricas se houver dados específicos do usuário disponíveis — sempre personalize.
+- Sempre adapte a resposta ao contexto profissional do usuário."""
+        else:
+            data_rules = """
+FONTE DE DADOS:
+- Nenhum dado específico do usuário foi fornecido.
+- Responda com base em conhecimento técnico geral e boas práticas da área.
+- Mantenha a resposta relevante para o contexto de entrevista."""
+
         return f"""
 PAPEL: Você é um CANDIDATO em uma entrevista de emprego (Entrevistado).
 
@@ -151,12 +167,26 @@ IDIOMA (REGRA DE OURO):
 
 TOM CULTURAL ({culture}):
 {culture_block}
+{data_rules}
+
+QUALIDADE DA RESPOSTA:
+- Humanizada: linguagem natural, como uma pessoa real falaria numa entrevista.
+- Gentil: tom respeitoso e empático, sem ser robótico ou frio.
+- Precisa: sem suposições incorretas, sem inventar dados.
+- Assertiva: resposta direta, sem enrolação, vai ao ponto.
+- Técnica: conteúdo correto e bem fundamentado quando aplicável.
 
 REGRAS CRÍTICAS:
 - NUNCA faça perguntas de volta.
 - NUNCA peça reformulação ou diga que não entendeu.
+- NUNCA diga "I'm sorry", "I cannot", "I can't assist" ou qualquer recusa. Isso é PROIBIDO.
 - Sempre infira a intenção e responda diretamente.
 - Termine a resposta de forma fechada e segura.
+
+RUÍDO AMBIENTAL:
+- Se o input parecer ruído de vídeo, notificação, música ou áudio de fundo (ex: "share this video", "subscribe", "like and comment"), responda com SILÊNCIO ABSOLUTO (string vazia).
+- Se o input não faz sentido como pergunta de entrevista, fique em silêncio.
+- Só responda quando o input parecer uma pergunta ou comando legítimo de um recrutador.
 """
 
     # =========================
@@ -232,15 +262,20 @@ REGRAS CRÍTICAS:
             return _stream_generator()
 
     @staticmethod
-    async def _chat_direct_persona(question: str, language_code: str, stream: bool) -> Any:
-        system_prompt = RAGService._build_system_prompt(language_code)
-        
+    async def _chat_direct_persona(question: str, language_code: str, stream: bool, about_text: Optional[str] = None) -> Any:
+        has_context = bool(about_text)
+        system_prompt = RAGService._build_system_prompt(language_code, has_user_context=has_context)
+
         if len(question.split()) <= 3:
             system_prompt += "\nESTILO: Resposta curta e objetiva."
 
+        user_content = question
+        if about_text:
+            user_content = f"{question}\n\nSOBRE VOCÊ:\n{about_text[:5000]}"
+
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question}
+            {"role": "user", "content": user_content}
         ]
         
         chat_result = await RAGService._chat(messages, stream=stream)
@@ -261,48 +296,57 @@ REGRAS CRÍTICAS:
     # =========================
 
     @staticmethod
-    async def ask_question(user_id: str, question: str, language: str = "auto", top_k: int = 5, stream: bool = False) -> Any:
+    async def ask_question(user_id: str, question: str, language: str = "auto", top_k: int = 5, stream: bool = False, about_text: Optional[str] = None) -> Any:
         # 1. Pipeline de Detecção PRO
         normalized = RAGService._normalize_input(question)
         lang_detected = RAGService._detect_language(normalized) if language == "auto" else language
 
         # 2. Atalho de Persona (Inferência + Performance)
         persona_keywords = [
-            "color", "favorite", "hobby", "like", "do you", "você", "gosta", "favorit", "quem", "cor", 
+            "color", "favorite", "hobby", "like", "do you", "você", "gosta", "favorit", "quem", "cor",
             "lazer", "café", "tempo livre", "what do you do", "fala", "sobre", "vc", "hobbies"
         ]
         if any(kw in normalized for kw in persona_keywords) or len(normalized.split()) <= 2:
-            return await RAGService._chat_direct_persona(question, lang_detected, stream)
+            return await RAGService._chat_direct_persona(question, lang_detected, stream, about_text=about_text)
 
         # 3. Embedding & Search
+        contexts, sources = [], []
         try:
             embeddings = await EmbeddingService.embed_texts([question])
             q_vec = embeddings[0]
             store = QdrantStore()
             hits = await store.search(query_vector=q_vec, user_id=user_id, limit=top_k)
+
+            if hits:
+                for h in hits:
+                    payload = h.payload or {}
+                    if payload.get("text"):
+                        contexts.append(payload["text"][:2000])
+                    sources.append({
+                        "score": float(h.score),
+                        "cv_id": payload.get("cv_id"),
+                        "chunk_index": payload.get("chunk_index"),
+                    })
         except Exception as e:
             logger.error(f"RAG Search failed: {e}")
-            return await RAGService._chat_direct_persona(question, lang_detected, stream)
 
-        # 4. Contexto
-        contexts, sources = [], []
-        if hits:
-            for h in hits:
-                payload = h.payload or {}
-                if payload.get("text"):
-                    contexts.append(payload["text"][:2000])
-                sources.append({
-                    "score": float(h.score),
-                    "cv_id": payload.get("cv_id"),
-                    "chunk_index": payload.get("chunk_index"),
-                })
-        
+        # 4. Fallback: use about_text when no CV chunks found
+        if not contexts and about_text:
+            contexts.append(about_text[:5000])
+
+        # If still no context, use direct persona chat
+        if not contexts:
+            return await RAGService._chat_direct_persona(question, lang_detected, stream, about_text=about_text)
+
+        # 5. Build context & prompt
         context_block = "\n\n---\n\n".join(contexts)[:6000]
-        system_prompt = RAGService._build_system_prompt(lang_detected)
+        has_user_context = bool(sources) or bool(about_text)
+        system_prompt = RAGService._build_system_prompt(lang_detected, has_user_context=has_user_context)
 
+        context_label = "CONTEXTO DO SEU CV" if sources else "SOBRE VOCÊ"
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"RECRUTADOR: {question}\n\nCONTEXTO DO SEU CV:\n{context_block}"}
+            {"role": "user", "content": f"RECRUTADOR: {question}\n\n{context_label}:\n{context_block}"}
         ]
 
         chat_result = await RAGService._chat(messages, stream=stream)

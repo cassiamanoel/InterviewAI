@@ -2,9 +2,27 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { LogOut, Home, Mic } from "lucide-react";
+import { LogOut, Home, Mic, Lock } from "lucide-react";
+
+function useInterviewReady() {
+    const [ready, setReady] = useState(false);
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const check = () => {
+            const hasAbout = (localStorage.getItem("interview_about_text") || "").trim().length > 0;
+            const hasLang = (localStorage.getItem("interview_language") || "").length > 0;
+            setReady(hasAbout || hasLang);
+        };
+        check();
+        window.addEventListener("storage", check);
+        // Re-check on route changes (same tab won't fire storage event)
+        const interval = setInterval(check, 500);
+        return () => { window.removeEventListener("storage", check); clearInterval(interval); };
+    }, []);
+    return ready;
+}
 
 export default function DashboardLayout({
     children,
@@ -14,12 +32,20 @@ export default function DashboardLayout({
     const { isAuthenticated, loading, logout } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
+    const interviewReady = useInterviewReady();
 
     useEffect(() => {
         if (!loading && !isAuthenticated) {
             router.push("/login");
         }
     }, [loading, isAuthenticated, router]);
+
+    // Redirect away from interview if not ready
+    useEffect(() => {
+        if (pathname === "/interview" && !interviewReady) {
+            router.replace("/dashboard");
+        }
+    }, [pathname, interviewReady, router]);
 
     if (loading || !isAuthenticated) return null;
 
@@ -39,13 +65,23 @@ export default function DashboardLayout({
                         <Home className="w-5 h-5" />
                         Dashboard
                     </Link>
-                    <Link
-                        href="/interview"
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors ${pathname === '/interview' ? 'bg-primary/10 text-primary' : 'hover:bg-surface-hover text-foreground/80'}`}
-                    >
-                        <Mic className="w-5 h-5" />
-                        Interview Room
-                    </Link>
+                    {interviewReady ? (
+                        <Link
+                            href="/interview"
+                            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors ${pathname === '/interview' ? 'bg-primary/10 text-primary' : 'hover:bg-surface-hover text-foreground/80'}`}
+                        >
+                            <Mic className="w-5 h-5" />
+                            Interview Room
+                        </Link>
+                    ) : (
+                        <div
+                            className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-foreground/30 cursor-not-allowed"
+                            title="Fill in your profile on the Dashboard first"
+                        >
+                            <Lock className="w-5 h-5" />
+                            Interview Room
+                        </div>
+                    )}
                 </nav>
 
                 <div className="p-4 border-t border-border">

@@ -1,8 +1,8 @@
 "use client";
 
 import { useAudioInterview } from "@/hooks/useAudioInterview";
-import { Mic, MicOff, Loader2, Volume2, AlertCircle } from "lucide-react";
-import { useEffect } from "react";
+import { Mic, MicOff, Loader2, AlertCircle, Square } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 export default function AudioInterviewPage() {
     const {
@@ -14,6 +14,14 @@ export default function AudioInterviewPage() {
         errorMsg,
         isSupported
     } = useAudioInterview();
+
+    // Auto-scroll ref
+    const scrollEndRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll on new interactions or streaming updates
+    useEffect(() => {
+        scrollEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [interactions, transcript]);
 
     // Warn user if Web Speech is not supported
     if (!isSupported) {
@@ -33,7 +41,7 @@ export default function AudioInterviewPage() {
         switch (audioState) {
             case "listening":
                 return (
-                    <div className="relative flex items-center justify-center mb-12">
+                    <div className="relative flex items-center justify-center mb-8">
                         <div className="absolute w-48 h-48 bg-primary/20 rounded-full animate-ping delay-75"></div>
                         <div className="absolute w-32 h-32 bg-primary/40 rounded-full animate-ping"></div>
                         <div className="relative z-10 w-24 h-24 bg-primary text-white rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(139,92,246,0.6)]">
@@ -43,7 +51,7 @@ export default function AudioInterviewPage() {
                 );
             case "thinking":
                 return (
-                    <div className="relative flex items-center justify-center mb-12">
+                    <div className="relative flex items-center justify-center mb-8">
                         <div className="relative z-10 w-24 h-24 bg-surface-hover border-2 border-primary text-primary rounded-full flex items-center justify-center shadow-lg">
                             <Loader2 className="w-10 h-10 animate-spin" />
                         </div>
@@ -52,7 +60,7 @@ export default function AudioInterviewPage() {
 
             default:
                 return (
-                    <div className="relative flex items-center justify-center mb-12">
+                    <div className="relative flex items-center justify-center mb-8">
                         <button
                             onClick={startSession}
                             className="relative z-10 w-24 h-24 bg-surface-hover text-foreground/50 hover:bg-primary/10 hover:text-primary rounded-full flex items-center justify-center transition-all duration-300 shadow-md group"
@@ -79,27 +87,30 @@ export default function AudioInterviewPage() {
             </div>
 
             {/* Header */}
-            <header className="flex items-center justify-center p-6 border-b border-border/50 z-10">
+            <header className="flex items-center justify-center p-6 border-b border-border/50 z-10 shrink-0">
                 <h1 className="text-xl font-bold tracking-tight">Audio Interview Room</h1>
             </header>
 
             {/* Main Content (Visualizer & Transcripts) */}
-            <main className="flex-1 flex flex-col items-center justify-center p-8 z-10">
+            <main className="flex-1 flex flex-col items-center p-8 z-10 overflow-y-auto min-h-0">
 
-                {renderVisualizer()}
+                {/* Visualizer (sticky at top when there are interactions, otherwise centered) */}
+                <div className={`w-full flex flex-col items-center ${interactions.length === 0 && !transcript ? 'flex-1 justify-center' : 'shrink-0 pt-4'}`}>
+                    {renderVisualizer()}
 
-                <div className="text-sm font-semibold text-foreground/50 uppercase tracking-widest mb-6">
-                    {statusText}
+                    <div className="text-sm font-semibold text-foreground/50 uppercase tracking-widest mb-6">
+                        {statusText}
+                    </div>
+
+                    {errorMsg && (
+                        <div className="bg-red-500/10 text-red-500 px-6 py-3 rounded-xl border border-red-500/20 mb-6 text-center max-w-lg">
+                            {errorMsg}
+                        </div>
+                    )}
                 </div>
 
-                {errorMsg && (
-                    <div className="bg-red-500/10 text-red-500 px-6 py-3 rounded-xl border border-red-500/20 mb-6 text-center max-w-lg">
-                        {errorMsg}
-                    </div>
-                )}
-
-                {/* Text Cards */}
-                <div className="w-full max-w-4xl space-y-6 overflow-y-auto pb-8">
+                {/* Chat Cards */}
+                <div className="w-full max-w-4xl space-y-6 pb-8">
                     {interactions.map((interaction) => (
                         <div key={interaction.id} className="bg-surface-hover border border-border p-6 rounded-3xl shadow-sm space-y-4">
                             <div>
@@ -126,12 +137,15 @@ export default function AudioInterviewPage() {
                             <p className="text-md italic text-foreground mt-1">{transcript}</p>
                         </div>
                     )}
+
+                    {/* Scroll anchor */}
+                    <div ref={scrollEndRef} />
                 </div>
 
             </main>
 
             {/* Footer Controls */}
-            <footer className="p-8 flex justify-center z-10 border-t border-border/50 bg-background/50 backdrop-blur-sm relative">
+            <footer className="p-8 flex justify-center z-10 border-t border-border/50 bg-background/50 backdrop-blur-sm relative shrink-0">
                 {audioState === "idle" || audioState === "error" ? (
                     <button
                         onClick={startSession}
@@ -142,9 +156,10 @@ export default function AudioInterviewPage() {
                 ) : (
                     <button
                         onClick={stopSession}
-                        className="px-8 py-3 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold transition-all shadow-lg hover:shadow-red-500/50"
+                        className="px-8 py-3 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold transition-all shadow-lg hover:shadow-red-500/50 flex items-center gap-2"
                     >
-                        End Interview
+                        <Square className="w-4 h-4 fill-current" />
+                        Stop Interview
                     </button>
                 )}
             </footer>

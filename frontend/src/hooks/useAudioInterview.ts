@@ -16,6 +16,7 @@ export type InterviewInteraction = {
 
 export function useAudioInterview() {
     const [sessionLanguage, setSessionLanguage] = useState("auto");
+    const [aboutText, setAboutText] = useState<string | null>(null);
     const [audioState, setAudioState] = useState<AudioState>("idle");
     const [transcript, setTranscript] = useState("");
     const [interactions, setInteractions] = useState<InterviewInteraction[]>([]);
@@ -23,11 +24,13 @@ export function useAudioInterview() {
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const audioStateRef = useRef<AudioState>("idle");
+    const stoppedRef = useRef(false);
 
     useEffect(() => {
         if (typeof window !== "undefined") {
             const lang = localStorage.getItem("interview_language") || "auto";
             setSessionLanguage(lang);
+            setAboutText(localStorage.getItem("interview_about_text") || null);
         }
     }, []);
 
@@ -47,6 +50,7 @@ export function useAudioInterview() {
     const handleQuestionDetected = useCallback(async (finalQuestion: string, detectedLanguage?: string) => {
         if (!finalQuestion.trim()) return;
         if (audioStateRef.current === "thinking") return;
+        if (stoppedRef.current) return;
 
         const interactionId = Date.now().toString();
         setInteractions(prev => [...prev, { id: interactionId, question: finalQuestion, answer: "" }]);
@@ -57,21 +61,29 @@ export function useAudioInterview() {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        // Se Whisper nos deu um idioma detectado, usamos ele; senão fallback do sessionLanguage
-        const langToSend = detectedLanguage || sessionLanguage;
+        // Idioma: usa o que o Whisper detectou, NÃO faz fallback para 'auto'
+        const langToSend = (detectedLanguage && detectedLanguage !== "auto") ? detectedLanguage : sessionLanguage;
+        console.log(`🌐 Language to send: ${langToSend} (detected: ${detectedLanguage}, session: ${sessionLanguage})`);
 
         try {
             const token = getToken();
+            const body: Record<string, any> = {
+                question: finalQuestion,
+                language: langToSend
+            };
+
+            // Send about_text when available (alternative to CV)
+            if (aboutText) {
+                body.about_text = aboutText;
+            }
+
             const response = await fetch(`${NEXT_PUBLIC_API_URL}/interview/ask?stream=true`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify({ 
-                    question: finalQuestion,
-                    language: langToSend
-                }),
+                body: JSON.stringify(body),
                 signal: controller.signal
             });
 
@@ -83,7 +95,7 @@ export function useAudioInterview() {
             let done = false;
             let fullContent = "";
 
-            while (!done) {
+            while (!done && !stoppedRef.current) {
                 const { value, done: readerDone } = await reader.read();
                 done = readerDone;
 
@@ -91,6 +103,7 @@ export function useAudioInterview() {
                     const chunk = decoder.decode(value, { stream: true });
                     const lines = chunk.split("\n");
                     for (const line of lines) {
+                        if (stoppedRef.current) break;
                         if (line.startsWith("data: ")) {
                             const dataStr = line.replace("data: ", "").trim();
                             if (dataStr === "[DONE]") { done = true; break; }
@@ -112,19 +125,25 @@ export function useAudioInterview() {
                 }
             }
 
+            // If stopped during streaming, cancel the reader
+            if (stoppedRef.current) {
+                try { reader.cancel(); } catch (_) {}
+                return;
+            }
+
             setAudioState("listening");
 
         } catch (err: any) {
             if (err.name === "AbortError") {
                 console.log("Request Aborted");
-            } else {
+            } else if (!stoppedRef.current) {
                 setErrorMsg(err.message || "Pipeline error");
                 setAudioState("error");
             }
         } finally {
             abortControllerRef.current = null;
         }
-    }, [sessionLanguage]);
+    }, [sessionLanguage, aboutText]);
 
     // ========================
     // MODO AUTO → Whisper
@@ -160,6 +179,7 @@ export function useAudioInterview() {
     ]);
 
     const startSession = useCallback(() => {
+        stoppedRef.current = false;
         setAudioState("listening");
         setErrorMsg(null);
         setTranscript("");
@@ -172,13 +192,27 @@ export function useAudioInterview() {
     }, [isAutoMode, whisper, speech]);
 
     const stopSession = useCallback(() => {
+        // 1. Marca como parado para impedir qualquer processamento
+        stoppedRef.current = true;
+
+        // 2. Para microfone
         if (isAutoMode) {
             whisper.stopListening();
         } else {
             speech.stopListening();
         }
-        if (abortControllerRef.current) abortControllerRef.current.abort();
+
+        // 3. Aborta qualquer geração em andamento
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+
+        // 4. Limpa tudo
         setAudioState("idle");
+        setTranscript("");
+        setErrorMsg(null);
+        console.log("🛑 Interview stopped completely");
     }, [isAutoMode, whisper, speech]);
 
     return {
