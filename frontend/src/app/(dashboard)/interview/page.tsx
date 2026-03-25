@@ -117,7 +117,12 @@ export default function AudioInterviewPage() {
                                 <span className="text-xs font-bold text-foreground/50 uppercase">Detected Question:</span>
                                 <p className="text-lg leading-relaxed text-foreground mt-1">"{interaction.question}"</p>
                             </div>
-                            {interaction.answer ? (
+                            {interaction.answer === "[Stopped]" ? (
+                                <div className="flex items-center gap-2 text-foreground/40 bg-foreground/5 rounded-2xl p-4 border border-border">
+                                    <Square className="w-4 h-4" />
+                                    <span className="text-sm font-semibold">Generation stopped</span>
+                                </div>
+                            ) : interaction.answer ? (
                                 <div className="bg-primary/5 rounded-2xl p-4 border border-primary/20">
                                     <span className="text-xs font-bold text-primary uppercase">Copilot Suggestion:</span>
                                     <p className="text-md leading-relaxed text-foreground mt-1 whitespace-pre-wrap">{interaction.answer}</p>

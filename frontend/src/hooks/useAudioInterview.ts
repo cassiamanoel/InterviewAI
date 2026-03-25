@@ -208,7 +208,14 @@ export function useAudioInterview() {
             abortControllerRef.current = null;
         }
 
-        // 4. Limpa tudo
+        // 4. Marca interações sem resposta como interrompidas
+        setInteractions(prev => prev.map(interaction =>
+            interaction.answer === ""
+                ? { ...interaction, answer: "[Stopped]" }
+                : interaction
+        ));
+
+        // 5. Limpa estado
         setAudioState("idle");
         setTranscript("");
         setErrorMsg(null);
