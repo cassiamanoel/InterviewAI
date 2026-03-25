@@ -1,17 +1,19 @@
 "use client";
 
 import { useAudioInterview } from "@/hooks/useAudioInterview";
-import { Mic, MicOff, Loader2, AlertCircle, Square } from "lucide-react";
+import { Mic, MicOff, Loader2, AlertCircle, Square, BookOpen, CheckCircle } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 export default function AudioInterviewPage() {
     const {
         startSession,
         stopSession,
+        skipReadingPause,
         audioState,
         transcript,
         interactions,
         errorMsg,
+        readingCountdown,
         isSupported
     } = useAudioInterview();
 
@@ -57,6 +59,15 @@ export default function AudioInterviewPage() {
                         </div>
                     </div>
                 );
+            case "reading":
+                return (
+                    <div className="relative flex items-center justify-center mb-8">
+                        <div className="absolute w-32 h-32 bg-amber-500/10 rounded-full animate-pulse"></div>
+                        <div className="relative z-10 w-24 h-24 bg-amber-500/10 border-2 border-amber-500 text-amber-500 rounded-full flex items-center justify-center shadow-lg">
+                            <BookOpen className="w-10 h-10" />
+                        </div>
+                    </div>
+                );
 
             default:
                 return (
@@ -76,6 +87,9 @@ export default function AudioInterviewPage() {
         idle: "Ready to begin",
         listening: "Listening for questions...",
         thinking: "Generating answer...",
+        reading: readingCountdown > 0
+            ? `Waiting for silence... (${readingCountdown}s)`
+            : "Waiting for silence...",
         error: "An error occurred",
     }[audioState];
 
@@ -84,6 +98,7 @@ export default function AudioInterviewPage() {
             {/* Immersive Background Gradients */}
             <div className={`absolute inset-0 pointer-events-none transition-opacity duration-1000 ${audioState !== 'idle' ? 'opacity-100' : 'opacity-0'}`}>
                 {audioState === 'listening' && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-primary/5 to-transparent"></div>}
+                {audioState === 'reading' && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-amber-500/5 to-transparent"></div>}
             </div>
 
             {/* Header */}
@@ -98,9 +113,20 @@ export default function AudioInterviewPage() {
                 <div className={`w-full flex flex-col items-center ${interactions.length === 0 && !transcript ? 'flex-1 justify-center' : 'shrink-0 pt-4'}`}>
                     {renderVisualizer()}
 
-                    <div className="text-sm font-semibold text-foreground/50 uppercase tracking-widest mb-6">
+                    <div className={`text-sm font-semibold uppercase tracking-widest mb-4 ${audioState === 'reading' ? 'text-amber-500' : 'text-foreground/50'}`}>
                         {statusText}
                     </div>
+
+                    {/* "I'm Ready" button during reading pause */}
+                    {audioState === "reading" && (
+                        <button
+                            onClick={skipReadingPause}
+                            className="mb-6 px-6 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-full font-bold transition-all shadow-lg hover:shadow-green-500/30 flex items-center gap-2 animate-in zoom-in-95 duration-300"
+                        >
+                            <CheckCircle className="w-4 h-4" />
+                            I'm Ready — Resume Mic
+                        </button>
+                    )}
 
                     {errorMsg && (
                         <div className="bg-red-500/10 text-red-500 px-6 py-3 rounded-xl border border-red-500/20 mb-6 text-center max-w-lg">

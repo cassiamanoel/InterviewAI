@@ -6,13 +6,20 @@ import { getToken } from "@/lib/api";
 import { useSpeechRecognition } from "./useSpeechRecognition";
 import { useWhisperRecognition } from "./useWhisperRecognition";
 
-export type AudioState = "idle" | "listening" | "thinking" | "error";
+export type AudioState = "idle" | "listening" | "thinking" | "reading" | "error";
 
 export type InterviewInteraction = {
     id: string;
     question: string;
     answer: string;
 };
+
+// 3 seconds of absolute silence required before mic resumes
+const SILENCE_REQUIRED_MS = 3000;
+// Volume below this RMS threshold counts as silence (0–1 range)
+const SILENCE_VOLUME_THRESHOLD = 0.015;
+// How often we sample the audio level
+const MONITOR_INTERVAL_MS = 100;
 
 export function useAudioInterview() {
     const [sessionLanguage, setSessionLanguage] = useState("auto");
@@ -21,10 +28,18 @@ export function useAudioInterview() {
     const [transcript, setTranscript] = useState("");
     const [interactions, setInteractions] = useState<InterviewInteraction[]>([]);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [readingCountdown, setReadingCountdown] = useState(0);
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const audioStateRef = useRef<AudioState>("idle");
     const stoppedRef = useRef(false);
+
+    // Silence monitor refs
+    const silenceMonitorRef = useRef<NodeJS.Timeout | null>(null);
+    const silenceAudioCtxRef = useRef<AudioContext | null>(null);
+    const silenceStreamRef = useRef<MediaStream | null>(null);
+    const silenceStartRef = useRef<number>(0);
+    const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         if (typeof window !== "undefined") {
@@ -34,23 +49,141 @@ export function useAudioInterview() {
         }
     }, []);
 
-    // Mantém ref do audioState para evitar closures stale em callbacks
     useEffect(() => {
         audioStateRef.current = audioState;
     }, [audioState]);
 
     const isAutoMode = sessionLanguage === "auto";
 
-    /*
-     * handleQuestionDetected
-     * Recebe a pergunta transcrita e o idioma detectado.
-     * No modo Whisper, o idioma vem do Whisper/Lingua.
-     * No modo Web Speech, o idioma é o sessionLanguage.
-     */
+    // ========================
+    // MIC PAUSE / RESUME
+    // ========================
+    const pauseMicRef = useRef<(() => void) | null>(null);
+    const resumeMicRef = useRef<(() => void) | null>(null);
+
+    // ========================
+    // SILENCE MONITOR
+    // ========================
+    // Uses AudioContext + AnalyserNode to measure ambient volume
+    // WITHOUT transcribing anything. Once 3s of continuous silence
+    // is detected, it stops and resumes the speech mic.
+
+    const stopSilenceMonitor = useCallback(() => {
+        if (silenceMonitorRef.current) {
+            clearInterval(silenceMonitorRef.current);
+            silenceMonitorRef.current = null;
+        }
+        if (countdownIntervalRef.current) {
+            clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+        }
+        if (silenceAudioCtxRef.current) {
+            silenceAudioCtxRef.current.close().catch(() => {});
+            silenceAudioCtxRef.current = null;
+        }
+        if (silenceStreamRef.current) {
+            silenceStreamRef.current.getTracks().forEach(t => t.stop());
+            silenceStreamRef.current = null;
+        }
+        setReadingCountdown(0);
+    }, []);
+
+    const startSilenceMonitor = useCallback(async () => {
+        if (stoppedRef.current) return;
+
+        setAudioState("reading");
+        setReadingCountdown(Math.ceil(SILENCE_REQUIRED_MS / 1000));
+        silenceStartRef.current = 0;
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            silenceStreamRef.current = stream;
+
+            const audioCtx = new AudioContext();
+            silenceAudioCtxRef.current = audioCtx;
+
+            const source = audioCtx.createMediaStreamSource(stream);
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 512;
+            source.connect(analyser);
+
+            const dataArray = new Float32Array(analyser.fftSize);
+            let consecutiveSilenceMs = 0;
+
+            // Visual countdown: update every second
+            countdownIntervalRef.current = setInterval(() => {
+                if (stoppedRef.current) return;
+                const remaining = Math.ceil((SILENCE_REQUIRED_MS - consecutiveSilenceMs) / 1000);
+                setReadingCountdown(Math.max(0, remaining));
+            }, 200);
+
+            // Audio level polling
+            silenceMonitorRef.current = setInterval(() => {
+                if (stoppedRef.current) {
+                    stopSilenceMonitor();
+                    return;
+                }
+
+                analyser.getFloatTimeDomainData(dataArray);
+
+                // Calculate RMS volume
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                    sum += dataArray[i] * dataArray[i];
+                }
+                const rms = Math.sqrt(sum / dataArray.length);
+
+                if (rms < SILENCE_VOLUME_THRESHOLD) {
+                    // Silence — accumulate
+                    consecutiveSilenceMs += MONITOR_INTERVAL_MS;
+                } else {
+                    // Sound detected — reset
+                    consecutiveSilenceMs = 0;
+                }
+
+                if (consecutiveSilenceMs >= SILENCE_REQUIRED_MS) {
+                    // 3s of absolute silence achieved → resume mic
+                    stopSilenceMonitor();
+                    if (!stoppedRef.current) {
+                        resumeMicRef.current?.();
+                        setAudioState("listening");
+                        console.log("🎤 3s silence detected — mic resumed");
+                    }
+                }
+            }, MONITOR_INTERVAL_MS);
+
+        } catch (e: any) {
+            console.error("Silence monitor error:", e);
+            // Fallback: resume mic after fixed 3s if audio monitoring fails
+            stopSilenceMonitor();
+            setTimeout(() => {
+                if (!stoppedRef.current) {
+                    resumeMicRef.current?.();
+                    setAudioState("listening");
+                }
+            }, SILENCE_REQUIRED_MS);
+        }
+    }, [stopSilenceMonitor]);
+
+    const skipReadingPause = useCallback(() => {
+        stopSilenceMonitor();
+        if (!stoppedRef.current) {
+            resumeMicRef.current?.();
+            setAudioState("listening");
+            console.log("🎤 Reading skipped manually — mic resumed");
+        }
+    }, [stopSilenceMonitor]);
+
+    // ========================
+    // QUESTION HANDLER
+    // ========================
     const handleQuestionDetected = useCallback(async (finalQuestion: string, detectedLanguage?: string) => {
         if (!finalQuestion.trim()) return;
-        if (audioStateRef.current === "thinking") return;
+        if (audioStateRef.current === "thinking" || audioStateRef.current === "reading") return;
         if (stoppedRef.current) return;
+
+        // 1. Pause mic immediately
+        pauseMicRef.current?.();
 
         const interactionId = Date.now().toString();
         setInteractions(prev => [...prev, { id: interactionId, question: finalQuestion, answer: "" }]);
@@ -61,7 +194,6 @@ export function useAudioInterview() {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        // Idioma: usa o que o Whisper detectou, NÃO faz fallback para 'auto'
         const langToSend = (detectedLanguage && detectedLanguage !== "auto") ? detectedLanguage : sessionLanguage;
         console.log(`🌐 Language to send: ${langToSend} (detected: ${detectedLanguage}, session: ${sessionLanguage})`);
 
@@ -72,7 +204,6 @@ export function useAudioInterview() {
                 language: langToSend
             };
 
-            // Send about_text when available (alternative to CV)
             if (aboutText) {
                 body.about_text = aboutText;
             }
@@ -125,13 +256,13 @@ export function useAudioInterview() {
                 }
             }
 
-            // If stopped during streaming, cancel the reader
             if (stoppedRef.current) {
                 try { reader.cancel(); } catch (_) {}
                 return;
             }
 
-            setAudioState("listening");
+            // 2. Response complete → start silence monitor (mic stays paused)
+            startSilenceMonitor();
 
         } catch (err: any) {
             if (err.name === "AbortError") {
@@ -143,7 +274,7 @@ export function useAudioInterview() {
         } finally {
             abortControllerRef.current = null;
         }
-    }, [sessionLanguage, aboutText]);
+    }, [sessionLanguage, aboutText, startSilenceMonitor]);
 
     // ========================
     // MODO AUTO → Whisper
@@ -160,15 +291,26 @@ export function useAudioInterview() {
     const speech = useSpeechRecognition({
         language: sessionLanguage,
         onQuestionDetected: (q) => handleQuestionDetected(q, sessionLanguage),
-        silenceThresholdMs: 2500
+        silenceThresholdMs: 3000
     });
 
-    // Sync transcript com o modo ativo
+    // Wire up pause/resume refs
+    useEffect(() => {
+        if (isAutoMode) {
+            pauseMicRef.current = whisper.stopListening;
+            resumeMicRef.current = whisper.startListening;
+        } else {
+            pauseMicRef.current = speech.stopListening;
+            resumeMicRef.current = speech.startListening;
+        }
+    }, [isAutoMode, whisper.stopListening, whisper.startListening, speech.stopListening, speech.startListening]);
+
+    // Sync transcript
     useEffect(() => {
         const activeTranscript = isAutoMode ? whisper.transcript : speech.transcript;
         const isActive = isAutoMode ? whisper.isListening : speech.isListening;
 
-        if (isActive && audioState !== "listening" && audioState !== "thinking") {
+        if (isActive && audioState !== "listening" && audioState !== "thinking" && audioState !== "reading") {
             setAudioState("listening");
         }
         setTranscript(activeTranscript);
@@ -180,6 +322,7 @@ export function useAudioInterview() {
 
     const startSession = useCallback(() => {
         stoppedRef.current = false;
+        stopSilenceMonitor();
         setAudioState("listening");
         setErrorMsg(null);
         setTranscript("");
@@ -189,46 +332,45 @@ export function useAudioInterview() {
         } else {
             speech.startListening();
         }
-    }, [isAutoMode, whisper, speech]);
+    }, [isAutoMode, whisper, speech, stopSilenceMonitor]);
 
     const stopSession = useCallback(() => {
-        // 1. Marca como parado para impedir qualquer processamento
         stoppedRef.current = true;
 
-        // 2. Para microfone
+        stopSilenceMonitor();
+
         if (isAutoMode) {
             whisper.stopListening();
         } else {
             speech.stopListening();
         }
 
-        // 3. Aborta qualquer geração em andamento
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
             abortControllerRef.current = null;
         }
 
-        // 4. Marca interações sem resposta como interrompidas
         setInteractions(prev => prev.map(interaction =>
             interaction.answer === ""
                 ? { ...interaction, answer: "[Stopped]" }
                 : interaction
         ));
 
-        // 5. Limpa estado
         setAudioState("idle");
         setTranscript("");
         setErrorMsg(null);
         console.log("🛑 Interview stopped completely");
-    }, [isAutoMode, whisper, speech]);
+    }, [isAutoMode, whisper, speech, stopSilenceMonitor]);
 
     return {
         startSession,
         stopSession,
+        skipReadingPause,
         audioState,
         transcript,
         interactions,
         errorMsg,
+        readingCountdown,
         language: sessionLanguage,
         isAutoMode,
         isProcessing: whisper.isProcessing,
