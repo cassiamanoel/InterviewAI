@@ -5,6 +5,7 @@ import { NEXT_PUBLIC_API_URL } from "@/lib/config";
 import { getToken } from "@/lib/api";
 import { useSpeechRecognition } from "./useSpeechRecognition";
 import { useWhisperRecognition } from "./useWhisperRecognition";
+import { useVAD } from "./useVAD";
 
 export type AudioState = "idle" | "listening" | "thinking" | "reading" | "error";
 
@@ -14,12 +15,8 @@ export type InterviewInteraction = {
     answer: string;
 };
 
-// 3 seconds of absolute silence required before mic resumes
+// 3 seconds of silence required before mic resumes after answer
 const SILENCE_REQUIRED_MS = 3000;
-// Volume below this RMS threshold counts as silence (0–1 range)
-const SILENCE_VOLUME_THRESHOLD = 0.015;
-// How often we sample the audio level
-const MONITOR_INTERVAL_MS = 100;
 
 export function useAudioInterview() {
     const [sessionLanguage, setSessionLanguage] = useState("auto");
@@ -34,11 +31,8 @@ export function useAudioInterview() {
     const audioStateRef = useRef<AudioState>("idle");
     const stoppedRef = useRef(false);
 
-    // Silence monitor refs
-    const silenceMonitorRef = useRef<NodeJS.Timeout | null>(null);
-    const silenceAudioCtxRef = useRef<AudioContext | null>(null);
-    const silenceStreamRef = useRef<MediaStream | null>(null);
-    const silenceStartRef = useRef<number>(0);
+    // Silence tracking for post-answer reading pause
+    const silenceAccumulatedRef = useRef(0);
     const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
@@ -62,100 +56,79 @@ export function useAudioInterview() {
     const resumeMicRef = useRef<(() => void) | null>(null);
 
     // ========================
-    // SILENCE MONITOR
+    // POST-ANSWER SILENCE VAD
     // ========================
-    // Uses AudioContext + AnalyserNode to measure ambient volume
-    // WITHOUT transcribing anything. Once 3s of continuous silence
-    // is detected, it stops and resumes the speech mic.
+    // Dedicated VAD instance that runs ONLY during "reading" state.
+    // It monitors ambient sound — when 3s of continuous silence is
+    // detected (no speech events), it resumes the main mic.
 
-    const stopSilenceMonitor = useCallback(() => {
-        if (silenceMonitorRef.current) {
-            clearInterval(silenceMonitorRef.current);
-            silenceMonitorRef.current = null;
-        }
+    const handlePostAnswerSpeechStart = useCallback(() => {
+        // Someone is talking (candidate reading aloud) → reset silence counter
+        silenceAccumulatedRef.current = 0;
+        setReadingCountdown(Math.ceil(SILENCE_REQUIRED_MS / 1000));
+    }, []);
+
+    const handlePostAnswerSpeechEnd = useCallback(() => {
+        // Speech ended → silence counter will accumulate via the interval
+    }, []);
+
+    const postAnswerVAD = useVAD({
+        onSpeechStart: handlePostAnswerSpeechStart,
+        onSpeechEnd: handlePostAnswerSpeechEnd,
+        positiveSpeechThreshold: 0.4,  // More sensitive to catch reading aloud
+        negativeSpeechThreshold: 0.25,
+        minSpeechMs: 150,
+        redemptionMs: 200,
+    });
+
+    const stopReadingMonitor = useCallback(() => {
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
         }
-        if (silenceAudioCtxRef.current) {
-            silenceAudioCtxRef.current.close().catch(() => {});
-            silenceAudioCtxRef.current = null;
-        }
-        if (silenceStreamRef.current) {
-            silenceStreamRef.current.getTracks().forEach(t => t.stop());
-            silenceStreamRef.current = null;
-        }
+        postAnswerVAD.stopListening();
+        silenceAccumulatedRef.current = 0;
         setReadingCountdown(0);
-    }, []);
+    }, [postAnswerVAD]);
 
-    const startSilenceMonitor = useCallback(async () => {
+    const startReadingMonitor = useCallback(async () => {
         if (stoppedRef.current) return;
 
         setAudioState("reading");
+        silenceAccumulatedRef.current = 0;
         setReadingCountdown(Math.ceil(SILENCE_REQUIRED_MS / 1000));
-        silenceStartRef.current = 0;
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            silenceStreamRef.current = stream;
+            await postAnswerVAD.startListening();
 
-            const audioCtx = new AudioContext();
-            silenceAudioCtxRef.current = audioCtx;
-
-            const source = audioCtx.createMediaStreamSource(stream);
-            const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 512;
-            source.connect(analyser);
-
-            const dataArray = new Float32Array(analyser.fftSize);
-            let consecutiveSilenceMs = 0;
-
-            // Visual countdown: update every second
+            // Poll silence accumulation every 200ms.
+            // onSpeechStart callback resets silenceAccumulatedRef to 0,
+            // so we just keep incrementing here — any speech resets it.
             countdownIntervalRef.current = setInterval(() => {
-                if (stoppedRef.current) return;
-                const remaining = Math.ceil((SILENCE_REQUIRED_MS - consecutiveSilenceMs) / 1000);
-                setReadingCountdown(Math.max(0, remaining));
-            }, 200);
-
-            // Audio level polling
-            silenceMonitorRef.current = setInterval(() => {
                 if (stoppedRef.current) {
-                    stopSilenceMonitor();
+                    stopReadingMonitor();
                     return;
                 }
 
-                analyser.getFloatTimeDomainData(dataArray);
+                silenceAccumulatedRef.current += 200;
 
-                // Calculate RMS volume
-                let sum = 0;
-                for (let i = 0; i < dataArray.length; i++) {
-                    sum += dataArray[i] * dataArray[i];
-                }
-                const rms = Math.sqrt(sum / dataArray.length);
+                const remaining = Math.ceil((SILENCE_REQUIRED_MS - silenceAccumulatedRef.current) / 1000);
+                setReadingCountdown(Math.max(0, remaining));
 
-                if (rms < SILENCE_VOLUME_THRESHOLD) {
-                    // Silence — accumulate
-                    consecutiveSilenceMs += MONITOR_INTERVAL_MS;
-                } else {
-                    // Sound detected — reset
-                    consecutiveSilenceMs = 0;
-                }
-
-                if (consecutiveSilenceMs >= SILENCE_REQUIRED_MS) {
-                    // 3s of absolute silence achieved → resume mic
-                    stopSilenceMonitor();
+                if (silenceAccumulatedRef.current >= SILENCE_REQUIRED_MS) {
+                    stopReadingMonitor();
                     if (!stoppedRef.current) {
                         resumeMicRef.current?.();
                         setAudioState("listening");
-                        console.log("🎤 3s silence detected — mic resumed");
+                        console.log("🎤 3s silence (VAD) — mic resumed");
                     }
                 }
-            }, MONITOR_INTERVAL_MS);
+            }, 200);
 
-        } catch (e: any) {
-            console.error("Silence monitor error:", e);
-            // Fallback: resume mic after fixed 3s if audio monitoring fails
-            stopSilenceMonitor();
+        } catch (e: unknown) {
+            console.error("Reading monitor error:", e);
+            // Fallback: resume after fixed 3s
+            stopReadingMonitor();
             setTimeout(() => {
                 if (!stoppedRef.current) {
                     resumeMicRef.current?.();
@@ -163,16 +136,16 @@ export function useAudioInterview() {
                 }
             }, SILENCE_REQUIRED_MS);
         }
-    }, [stopSilenceMonitor]);
+    }, [postAnswerVAD, stopReadingMonitor]);
 
     const skipReadingPause = useCallback(() => {
-        stopSilenceMonitor();
+        stopReadingMonitor();
         if (!stoppedRef.current) {
             resumeMicRef.current?.();
             setAudioState("listening");
             console.log("🎤 Reading skipped manually — mic resumed");
         }
-    }, [stopSilenceMonitor]);
+    }, [stopReadingMonitor]);
 
     // ========================
     // QUESTION HANDLER
@@ -199,7 +172,7 @@ export function useAudioInterview() {
 
         try {
             const token = getToken();
-            const body: Record<string, any> = {
+            const body: Record<string, unknown> = {
                 question: finalQuestion,
                 language: langToSend
             };
@@ -250,48 +223,46 @@ export function useAudioInterview() {
                                 } else if (parsed.type === "error") {
                                     throw new Error(parsed.message);
                                 }
-                            } catch (e) { }
+                            } catch { /* ignore parse error */ }
                         }
                     }
                 }
             }
 
             if (stoppedRef.current) {
-                try { reader.cancel(); } catch (_) {}
+                try { reader.cancel(); } catch { /* ignore */ }
                 return;
             }
 
-            // 2. Response complete → start silence monitor (mic stays paused)
-            startSilenceMonitor();
+            // 2. Response complete → start VAD silence monitor
+            startReadingMonitor();
 
-        } catch (err: any) {
-            if (err.name === "AbortError") {
+        } catch (err: unknown) {
+            if (err instanceof Error && err.name === "AbortError") {
                 console.log("Request Aborted");
             } else if (!stoppedRef.current) {
-                setErrorMsg(err.message || "Pipeline error");
+                setErrorMsg(err instanceof Error ? err.message : "Pipeline error");
                 setAudioState("error");
             }
         } finally {
             abortControllerRef.current = null;
         }
-    }, [sessionLanguage, aboutText, startSilenceMonitor]);
+    }, [sessionLanguage, aboutText, startReadingMonitor]);
 
     // ========================
-    // MODO AUTO → Whisper
+    // MODO AUTO → Whisper + VAD
     // ========================
     const whisper = useWhisperRecognition({
         onQuestionDetected: handleQuestionDetected,
-        silenceThresholdMs: 3000,
         apiBaseUrl: NEXT_PUBLIC_API_URL
     });
 
     // ========================
-    // MODO FIXO → Web Speech API
+    // MODO FIXO → Web Speech + VAD
     // ========================
     const speech = useSpeechRecognition({
         language: sessionLanguage,
         onQuestionDetected: (q) => handleQuestionDetected(q, sessionLanguage),
-        silenceThresholdMs: 3000
     });
 
     // Wire up pause/resume refs
@@ -322,7 +293,7 @@ export function useAudioInterview() {
 
     const startSession = useCallback(() => {
         stoppedRef.current = false;
-        stopSilenceMonitor();
+        stopReadingMonitor();
         setAudioState("listening");
         setErrorMsg(null);
         setTranscript("");
@@ -332,12 +303,12 @@ export function useAudioInterview() {
         } else {
             speech.startListening();
         }
-    }, [isAutoMode, whisper, speech, stopSilenceMonitor]);
+    }, [isAutoMode, whisper, speech, stopReadingMonitor]);
 
     const stopSession = useCallback(() => {
         stoppedRef.current = true;
 
-        stopSilenceMonitor();
+        stopReadingMonitor();
 
         if (isAutoMode) {
             whisper.stopListening();
@@ -360,7 +331,7 @@ export function useAudioInterview() {
         setTranscript("");
         setErrorMsg(null);
         console.log("🛑 Interview stopped completely");
-    }, [isAutoMode, whisper, speech, stopSilenceMonitor]);
+    }, [isAutoMode, whisper, speech, stopReadingMonitor]);
 
     return {
         startSession,
