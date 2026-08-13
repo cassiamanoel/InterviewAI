@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Interview AI is a full-stack technical interview preparation app. Users upload a CV (PDF), and an AI interviewer asks contextual questions using RAG (Retrieval-Augmented Generation) with real-time audio transcription and multilingual support.
 
-- **Backend**: Python FastAPI (async), PostgreSQL, Qdrant (vector DB), Redis
+- **Backend**: Python 3.11, FastAPI (async), PostgreSQL, Qdrant (vector DB), Redis
 - **Frontend**: Next.js 16 with React 19, TypeScript, Tailwind CSS 4
 - **AI**: OpenAI GPT-4o-mini (chat), text-embedding-3-small (embeddings), Whisper (transcription)
 - **Language detection**: Lingua library with Portuguese heuristics fallback
@@ -85,9 +85,18 @@ PDF → PyMuPDF text extraction → chunking (1200 chars, 200 overlap) → OpenA
 
 `useAudioInterview` orchestrates two modes:
 - **Auto mode**: `useWhisperRecognition` runs Web Speech API (live preview) + MediaRecorder (actual audio). Silence detection → sends blob to `/api/transcribe` (Whisper) → detected language forwarded to `/interview/ask`
-- **Fixed language mode**: Web Speech API with a set language code, no Whisper needed
+- **Fixed language mode**: Web Speech API (`useSpeechRecognition`) with a set language code, no Whisper needed
+
+`useVAD` provides neural Voice Activity Detection via Silero VAD (ONNX in-browser) for accurate speech start/end detection, replacing timer-based silence detection.
 
 Responses stream via fetch ReadableStream (SSE).
+
+### Frontend Structure
+
+- **Route groups**: `(auth)/` (login, register) and `(dashboard)/` (dashboard, interview pages)
+- **Context**: `AuthContext` manages JWT auth state across the app
+- **Hooks**: `useChat` (message state + streaming), `useAudioInterview` (orchestrator), `useVAD`, `useSpeechRecognition`, `useWhisperRecognition`
+- **Lib**: `api.ts` (axios instance with auth interceptor), `config.ts` (env vars)
 
 ### Key Services (backend/app/services/)
 
@@ -99,6 +108,8 @@ Responses stream via fetch ReadableStream (SSE).
 | `embeddings.py` | OpenAI embeddings with semaphore (max 50 concurrent) |
 | `rate_limit_service.py` | Per-user/day DB-backed usage tracking, plan-aware limits |
 | `billing_service.py` | Stripe/LemonSqueezy webhook subscription management |
+
+`backend/app/clients/openai_http.py` provides a low-level HTTP client with exponential backoff retry for OpenAI API calls (retries on 429/5xx).
 
 ### Database
 
@@ -135,3 +146,10 @@ Backend config via Pydantic BaseSettings (`backend/app/core/config.py`), loaded 
 - `FREE_DAILY_REQUESTS` (default: 20), `FREE_DAILY_TOKENS` (default: 20000)
 
 Frontend config in `frontend/src/lib/config.ts` reads `NEXT_PUBLIC_API_URL`.
+
+## Useful URLs (local dev)
+
+- Backend API: `http://localhost:8000`
+- Swagger docs: `http://localhost:8000/docs`
+- Health check: `http://localhost:8000/health`
+- Frontend: `http://localhost:3000`
